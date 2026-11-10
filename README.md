@@ -1,5 +1,7 @@
 # Verificator
 
+![Swift](https://img.shields.io/badge/Swift-F05138?logo=swift&logoColor=white) ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white) ![Universal](https://img.shields.io/badge/arch-arm64%20%2B%20x86__64-blue)
+
 A native macOS 26+ forensic application bundle (`.app`) inspector, built with SwiftUI and Liquid Glass as a universal app (Apple Silicon `arm64` + Intel `x86_64`). It performs read-only 4-layer Mach-O, code signature, and dylib injection analysis with **0% false positives** on legitimate Apple, App Store, Developer ID, and local developer builds.
 
 <p align="center">
