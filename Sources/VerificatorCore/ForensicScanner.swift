@@ -137,8 +137,13 @@ public enum ForensicScanner {
         let execDateStr = execModDate.map { dateFmt.string(from: $0) } ?? "-"
 
         // 1. Ana paket kod imzası ve çalıştırılabilir kod bütünlüğü denetimi
-        let (mainSig, codesignOut) = parseSignature(for: bundlePath)
+        var (mainSig, codesignOut) = parseSignature(for: bundlePath)
         let verifyResult = runTool("/usr/bin/codesign", args: ["--verify", "--no-strict", bundlePath])
+        let isNotSignedAtAll = verifyResult.output.contains("code object is not signed at all")
+        if isNotSignedAtAll {
+            mainSig.isUnsigned = true
+        }
+
         let gatekeeperStatus: String
         if mainSig.isUnsigned {
             gatekeeperStatus = "Unsigned (Local Developer Build)"

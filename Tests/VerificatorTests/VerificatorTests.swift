@@ -179,6 +179,12 @@ struct VerificatorTests {
             #expect(report.verdict == .clean, "Arhivar.app must be reported as CLEAN (0% false positive)")
         }
 
+        let roCheckURL = URL(fileURLWithPath: "/Applications/RoCheck.app")
+        if fm.fileExists(atPath: roCheckURL.path) {
+            let report = ForensicScanner.auditBundle(at: roCheckURL)
+            #expect(report.verdict == .clean, "RoCheck.app must be reported as CLEAN (0% false positive on local unsigned/ad-hoc developer build)")
+        }
+
         // 2. Clean vendor installer vs Tampered cracked app if present in ~/Downloads
         let cleanUPDF = URL(fileURLWithPath: "/Users/berkbabadogan/Downloads/UPDF Installer.app")
         if fm.fileExists(atPath: cleanUPDF.path) {
