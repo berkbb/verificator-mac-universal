@@ -125,7 +125,11 @@
 "appUpdateAvailable" = "New version available: %1$@ (installed: %2$@)";
 "appUpdateUpToDate" = "Verificator is up to date (%1$@)";
 "appUpdateDownload" = "Download Release";
-"appUpdateNoReleases" = "No published releases found on GitHub yet (%1$@ is current).";
+"appUpdateNoReleases" = "No published releases found on GitHub yet (installed: %1$@).";
+"appUpdateAvailableTitle" = "New Version Available";
+"appUpdateUpToDateTitle" = "Verificator is Up to Date";
+"appUpdateNoReleasesTitle" = "No GitHub Release Found";
+"appUpdateFailedTitle" = "Update Check Failed";
 "updateAutoCheck" = "Automatically check for updates on launch";
 "settingsReset" = "Reset All Settings to Defaults…";
 "settingsResetConfirm" = "Reset all preferences, custom shortcuts, and recent bundles?";

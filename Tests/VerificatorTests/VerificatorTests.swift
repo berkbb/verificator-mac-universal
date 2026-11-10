@@ -117,6 +117,13 @@ struct VerificatorTests {
         #expect(AppUpdateChecker.isReleaseURL(validDownload, repository: repo, download: true))
         #expect(!AppUpdateChecker.isReleaseURL(invalidHost, repository: repo, download: true))
         #expect(!AppUpdateChecker.isReleaseURL(insecureHTTP, repository: repo, download: false))
+
+        let notFoundJSON = """
+        {"message": "Not Found", "documentation_url": "https://docs.github.com/rest/releases/releases#get-the-latest-release"}
+        """.data(using: .utf8)!
+        #expect(throws: AppUpdateChecker.CheckError.noReleases) {
+            try AppUpdateChecker.parse(notFoundJSON, repository: repo)
+        }
     }
 
     @Test("UpdateChecksums SHA256SUMS Parser")

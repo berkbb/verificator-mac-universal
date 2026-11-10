@@ -41,6 +41,7 @@ public final class AppModel {
     @ObservationIgnored public var appleProblem: () -> AIPrerequisites.Problem? = AIPrerequisites.appleProblem
     @ObservationIgnored public var appleTestModel: any SuggestionModel = OnDeviceSuggestionModel()
     @ObservationIgnored public var localServerPorts: [LocalModelServer: Int] = [:]
+    @ObservationIgnored private var activeUpdateCheckTask: Task<AppUpdateState, Never>?
 
     @ObservationIgnored private let settings: AppSettings
 
@@ -172,25 +173,83 @@ public final class AppModel {
     }
 
     public func checkForAppUpdate(interactive: Bool) async {
-        guard appUpdateState != .checking else { return }
-        appUpdateState = .checking
-        do {
-            let release = try await AppUpdateChecker.latest(repository: AppInfo.repository)
-            if AppUpdateChecker.isNewer(release.version, than: AppInfo.version) {
-                appUpdateState = .available(release)
-                AppLog.shared.info(.update, "Update available: \(release.version)")
-            } else {
-                appUpdateState = .upToDate
-                AppLog.shared.info(.update, "App is up to date (\(AppInfo.version))")
+        if appUpdateState == .checking {
+            if let task = activeUpdateCheckTask, interactive {
+                let state = await task.value
+                await MainActor.run {
+                    presentUpdateAlert(for: state)
+                }
             }
-        } catch AppUpdateChecker.CheckError.noReleases {
-            appUpdateState = .noReleases
-            AppLog.shared.info(.update, "No GitHub releases published yet for \(AppInfo.repository)")
-        } catch {
-            appUpdateState = .failed(error.localizedDescription)
-            if interactive {
+            return
+        }
+        let checkTask = Task<AppUpdateState, Never> { @MainActor [weak self] in
+            guard let self else { return .idle }
+            self.appUpdateState = .checking
+            let finalState: AppUpdateState
+            do {
+                let release = try await AppUpdateChecker.latest(repository: AppInfo.repository)
+                if AppUpdateChecker.isNewer(release.version, than: AppInfo.version) {
+                    finalState = .available(release)
+                    AppLog.shared.info(.update, "Update available: \(release.version)")
+                } else {
+                    finalState = .upToDate
+                    AppLog.shared.info(.update, "App is up to date (\(AppInfo.version))")
+                }
+            } catch AppUpdateChecker.CheckError.noReleases {
+                finalState = .noReleases
+                AppLog.shared.warning(.update, "No GitHub releases published yet for \(AppInfo.repository)")
+            } catch {
+                finalState = .failed(error.localizedDescription)
                 AppLog.shared.warning(.update, "Update check failed", detail: error.localizedDescription)
             }
+            self.appUpdateState = finalState
+            return finalState
+        }
+        activeUpdateCheckTask = checkTask
+        let resultState = await checkTask.value
+        activeUpdateCheckTask = nil
+        if interactive {
+            await MainActor.run {
+                presentUpdateAlert(for: resultState)
+            }
+        }
+    }
+
+    @MainActor
+    public func presentUpdateAlert(for state: AppUpdateState) {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        switch state {
+        case .available(let release):
+            alert.alertStyle = .informational
+            alert.messageText = settings.t(.appUpdateAvailableTitle)
+            alert.informativeText = settings.t(.appUpdateAvailable, release.version, AppInfo.version)
+            alert.addButton(withTitle: settings.t(.appUpdateDownload))
+            alert.addButton(withTitle: settings.t(.buttonClose))
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                openAppDownload()
+            }
+        case .upToDate:
+            alert.alertStyle = .informational
+            alert.messageText = settings.t(.appUpdateUpToDateTitle)
+            alert.informativeText = settings.t(.appUpdateUpToDate, AppInfo.version)
+            alert.addButton(withTitle: settings.t(.buttonOK))
+            alert.runModal()
+        case .noReleases:
+            alert.alertStyle = .warning
+            alert.messageText = settings.t(.appUpdateNoReleasesTitle)
+            alert.informativeText = settings.t(.appUpdateNoReleases, AppInfo.version)
+            alert.addButton(withTitle: settings.t(.buttonOK))
+            alert.runModal()
+        case .failed(let message):
+            alert.alertStyle = .warning
+            alert.messageText = settings.t(.appUpdateFailedTitle)
+            alert.informativeText = message
+            alert.addButton(withTitle: settings.t(.buttonOK))
+            alert.runModal()
+        case .idle, .checking:
+            break
         }
     }
 

@@ -109,6 +109,7 @@ public enum LKey: String, CaseIterable, Sendable {
     case settingsToolsSection, settingsToolsRefresh, settingsToolReady, settingsToolMissing
     case appUpdateSection, appUpdateVersion, updateCheck, updateChecking
     case appUpdateAvailable, appUpdateUpToDate, appUpdateDownload, appUpdateNoReleases, updateAutoCheck
+    case appUpdateAvailableTitle, appUpdateUpToDateTitle, appUpdateNoReleasesTitle, appUpdateFailedTitle
     case settingsReset, settingsResetConfirm
     case shortcutCustomSection, shortcutReferenceSection, shortcutRecordPrompt, shortcutRecordHelp
     case shortcutResetDefault, shortcutResetAll, shortcutModifierRequired, shortcutConflictWarning

@@ -542,8 +542,8 @@ private struct EngineAndUpdateSettingsView: View {
             Label(settings.t(.appUpdateUpToDate, AppInfo.version), systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
         case .noReleases:
-            Label(settings.t(.appUpdateNoReleases, AppInfo.version), systemImage: "checkmark.circle.fill")
-                .foregroundStyle(.green)
+            Label(settings.t(.appUpdateNoReleases, AppInfo.version), systemImage: "exclamationmark.triangle.fill")
+                .foregroundStyle(.orange)
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)

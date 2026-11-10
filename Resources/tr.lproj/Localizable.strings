@@ -125,7 +125,11 @@
 "appUpdateAvailable" = "Yeni sürüm mevcut: %1$@ (yüklü: %2$@)";
 "appUpdateUpToDate" = "Verificator güncel (%1$@)";
 "appUpdateDownload" = "Sürümü İndir";
-"appUpdateNoReleases" = "GitHub üzerinde henüz yayımlanmış bir sürüm bulunmuyor (%1$@ güncel).";
+"appUpdateNoReleases" = "GitHub üzerinde henüz yayımlanmış bir sürüm bulunamadı (yüklü: %1$@).";
+"appUpdateAvailableTitle" = "Yeni Sürüm Mevcut";
+"appUpdateUpToDateTitle" = "Verificator Güncel";
+"appUpdateNoReleasesTitle" = "GitHub Sürümü Bulunamadı";
+"appUpdateFailedTitle" = "Güncelleme Denetimi Başarısız";
 "updateAutoCheck" = "Açılışta güncellemeleri otomatik olarak denetle";
 "settingsReset" = "Tüm Ayarları Varsayılana Sıfırla…";
 "settingsResetConfirm" = "Tüm tercihler, kısayollar ve son incelenen paket listesi sıfırlansın mı?";

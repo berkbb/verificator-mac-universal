@@ -28,8 +28,13 @@ public enum AppUpdateChecker {
     }
 
     public static func parse(_ data: Data, repository: String) throws -> AppRelease {
-        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let tag = object["tag_name"] as? String,
+        guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw CheckError.invalidData
+        }
+        if let msg = object["message"] as? String, msg.localizedCaseInsensitiveContains("not found") {
+            throw CheckError.noReleases
+        }
+        guard let tag = object["tag_name"] as? String,
               let page = (object["html_url"] as? String).flatMap(URL.init(string:)),
               object["draft"] as? Bool != true, object["prerelease"] as? Bool != true else {
             throw CheckError.invalidData

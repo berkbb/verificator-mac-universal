@@ -125,7 +125,11 @@
 "appUpdateAvailable" = "Versiune nouă disponibilă: %1$@ (instalată: %2$@)";
 "appUpdateUpToDate" = "Verificator este actualizat (%1$@)";
 "appUpdateDownload" = "Descarcă Versiunea";
-"appUpdateNoReleases" = "Nu există încă versiuni publicate pe GitHub (%1$@ este actuală).";
+"appUpdateNoReleases" = "Nu există încă versiuni publicate pe GitHub (instalată: %1$@).";
+"appUpdateAvailableTitle" = "Versiune Nouă Disponibilă";
+"appUpdateUpToDateTitle" = "Verificator este Actualizat";
+"appUpdateNoReleasesTitle" = "Nicio Versiune GitHub Găsită";
+"appUpdateFailedTitle" = "Verificarea Actualizărilor a Eșuat";
 "updateAutoCheck" = "Verifică automat actualizările la pornire";
 "settingsReset" = "Resetează Toate Setările la Valorile Implicite…";
 "settingsResetConfirm" = "Resetați toate preferințele, scurtăturile personalizate și lista de pachete recente?";
