@@ -36,11 +36,16 @@ ASSETS=("dist/$NAME.dmg" "dist/$NAME.dmg.sig" "dist/SHA256SUMS.txt")
 for asset in "${ASSETS[@]}"; do [ -f "$asset" ] || fail "$asset oluşmadı"; done
 
 echo "▸ Etiket: $TAG"
-if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-  run git tag -a "$TAG" -m "Verificator $VERSION"
-  run git push origin "$TAG"
-else
-  echo "  (etiket zaten var: $TAG)"
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+  run git tag -d "$TAG"
+  run git push --delete origin "$TAG" 2>/dev/null || true
+fi
+run git tag -a "$TAG" -m "Verificator $VERSION"
+run git push origin "$TAG"
+
+if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
+  echo "▸ Mevcut GitHub sürümü yenileniyor: $TAG"
+  run gh release delete "$TAG" --repo "$REPO" --yes
 fi
 
 RELEASE_ARGS=(release create "$TAG" "${ASSETS[@]}" --repo "$REPO" --title "Verificator $VERSION" --generate-notes --verify-tag)
