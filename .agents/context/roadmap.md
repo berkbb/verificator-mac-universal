@@ -21,3 +21,11 @@
 - [x] **Agent Intelligence & Graphify Knowledge Graph**:
   - [x] `.agents/` L0–L3 TencentDB Agent Memory structure and 42 Core AI Standards.
   - [x] `graphify-out/` AST knowledge graph and `.agents/context/code_graph_wiki.md`.
+- [x] **On-Device AI Forensic Assistant (`ForensicAI`)**:
+  - [x] Apple Intelligence (default on macOS 26+), Ollama (`127.0.0.1:11434`), LM Studio (`127.0.0.1:1234`), and Automatic fallback.
+  - [x] In-window assistant provider selector and model picker.
+  - [x] No-silent-switch policy with diagnostic amber badge for missing local models or unreachable servers.
+- [x] **Quarantine Inspection & Touch ID Stripping (`sudo xattr`)**:
+  - [x] Real-time detection of `com.apple.quarantine` on bundles and Mach-O executables.
+  - [x] Touch ID / administrator authentication prompt to remove quarantine (`sudo xattr -rd com.apple.quarantine`) with auto-rescan.
+  - [x] Gatekeeper first-launch warning and terminal unquarantine instructions documented in README and changelog.

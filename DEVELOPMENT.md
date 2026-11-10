@@ -16,7 +16,8 @@ Verificator/
 │   │   ├── AppLog.swift                  Unified log + ~/Library/Logs/Verificator/Verificator.log
 │   │   ├── AppUpdate.swift               GitHub Releases checker, Ed25519 signature & SHA-256 verification
 │   │   ├── ForensicModels.swift          BundleAuditReport, IntegrityVerdict, ForensicFinding, ScanOptions
-│   │   ├── ForensicScanner.swift         4-layer zero false-positive Mach-O, codesign & dylib scanner
+│   │   ├── ForensicScanner.swift         4-layer zero false-positive Mach-O, codesign & dylib scanner, quarantine check/strip
+│   │   ├── LocalModels.swift             On-device AI (Apple Intelligence, Ollama, LM Studio), LocalModelServer, ForensicAI
 │   │   └── Localization.swift            AppLanguage, StringTable, LKey (all string keys)
 │   └── Verificator/             SwiftUI app (default isolation: MainActor)
 │       ├── VerificatorApp.swift     Scenes (Main, About, Log, Settings), AppCommands, AppDelegate
@@ -47,6 +48,14 @@ Verificator/
 - **Zero False-Positive Calibration:**
   - Official Apple Root CA chains (`Developer ID Application`, `Apple Mac OS Application Signing`, `Software Signing`) and local ad-hoc builds (`Arhivar`, `Curatare`, `Copiator`, `Redactor`, etc.) evaluate to `IntegrityVerdict.clean`.
   - `IntegrityVerdict.tampered` is emitted only when corroborated by a known patcher authority (`TEAM EDiSO`, `TNT`, etc.), framework-versus-executable signature stripping with an injected dylib, or an unofficial authority combined with runtime hook symbols.
+- **Quarantine Inspection & Elevation:**
+  - Inspects `com.apple.quarantine` on `.app` packages and the Mach-O binary via `getxattr(..., "com.apple.quarantine", ...)`.
+  - When present, the user can remove quarantine via `ForensicScanner.removeQuarantineWithAdminPrivileges(at:)`, which triggers native macOS Touch ID or password prompts (`do shell script "/usr/bin/xattr -rd com.apple.quarantine ..." with administrator privileges`).
+  - Verificator itself is ad-hoc signed: first launch requires allowing through **System Settings › Privacy & Security** or `xattr -dr com.apple.quarantine /Applications/Verificator.app`.
+- **On-Device AI Security Architecture:**
+  - `ForensicAI` operates 100% locally on this Mac: **Apple Intelligence** (first and default via `FoundationModels`), local **Ollama** (`127.0.0.1:11434`), or local **LM Studio** (`127.0.0.1:1234`).
+  - Network requests strictly target `127.0.0.1` on fixed ports; proxies and HTTP redirects are blocked (`NoRedirects`); cloud and embedding models are filtered out.
+  - The model only explains forensic evidence in the user's language and cannot overwrite the deterministic `IntegrityVerdict`.
 - **Ed25519 Release Signing (`Scripts/update_signing.swift`):**
   - The Ed25519 private key is stored in the macOS login keychain under service `com.babadogantech.verificator.update-signing` with a mode-`0600` backup in `.secrets/ed25519-private-key.txt` (git-ignored).
   - The base64 public key is embedded in `Support/Info.plist` under `VerificatorUpdatePublicEDKey`.

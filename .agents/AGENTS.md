@@ -33,3 +33,17 @@
 | **L1** | Atomic Parameters | `AppSettings` (`UserDefaults`), `ScanOptions`, `ShortcutAction` bindings |
 | **L2** | Scenario / Engine State | `AppModel` (`currentBundleURL`, `report`, `isScanning`, `appUpdateStatus`) |
 | **L3** | Persona & Governance | `.agents/AGENTS.md`, `.agents/rules/*.md`, `.agents/context/*.md`, `.agents/skills/*.md` |
+
+## 4. Quarantine Invariant & Administrator Elevation Boundary
+
+1. **Detection:** All audited bundles are inspected for `com.apple.quarantine` extended attributes using `getxattr` and `xattr -p`.
+2. **Dynamic UI Action:** When `report.isQuarantined == true`, an explicit **Remove Quarantine** action (`⌘K`) is exposed in the verdict banner.
+3. **Privileged Execution:** Stripping quarantine invokes `/usr/bin/osascript ... with administrator privileges` to run `/usr/bin/xattr -rd com.apple.quarantine <bundlePath>`. This prompts native macOS Touch ID or admin password elevation and automatically re-audits the bundle upon completion.
+4. **Gatekeeper First-Launch Invariant:** Verificator is ad-hoc signed and not notarized. First-launch quarantine warnings must be clearly documented across `README.md` and `CHANGELOG.md` with GUI (right-click Open) and CLI (`xattr -dr com.apple.quarantine /Applications/Verificator.app`) workarounds.
+
+## 5. On-Device AI Boundary
+
+1. **Locality Invariant:** All AI evaluations must run strictly on this Mac. External cloud APIs, remote proxy tunnels, and cloud-hosted LLM endpoints are strictly banned.
+2. **Provider Hierarchy:** Apple Intelligence (`FoundationModels`) is the first and default provider, followed by local Ollama (`127.0.0.1:11434`) and LM Studio (`127.0.0.1:1234`).
+3. **No-Silent-Switch Invariant:** If a user chooses a specific provider that is offline or lacks local chat models, the engine must never silently switch to another provider; it must surface a diagnostic amber warning and wait. Silent fallback is restricted to `Automatic` mode.
+4. **Advisory Role Only:** The AI model generates explanatory summaries of deterministic forensic findings and is strictly forbidden from mutating the deterministic `IntegrityVerdict`.

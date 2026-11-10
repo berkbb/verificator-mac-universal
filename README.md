@@ -39,10 +39,16 @@ A native macOS 26+ forensic application bundle (`.app`) inspector, built with Sw
    shasum -a 256 -c SHA256SUMS.txt
    ```
 3. Open the `.dmg` and drag **Verificator** into the **Applications** folder.
-4. **First launch:** Verificator is ad-hoc signed rather than signed with an Apple Developer ID. If macOS blocks it on first launch, allow it in **System Settings › Privacy & Security › Open Anyway**, or remove the quarantine attribute in Terminal:
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/Verificator.app
-   ```
+4. **First launch & Gatekeeper Quarantine:** Verificator is ad-hoc signed rather than signed with a paid Apple Developer ID and is not notarized by Apple. When a file is downloaded from the internet, macOS automatically attaches the `com.apple.quarantine` extended attribute to it, and Gatekeeper blocks quarantined apps that are not notarized, displaying an alert such as *"Verificator can't be opened because Apple cannot check it for malicious software"*.
+   - **Method A (GUI):** Right-click (or Control-click) `Verificator.app` in `/Applications`, choose **Open**, and click **Open** in the confirmation dialog (only required once). Alternatively, allow it in **System Settings › Privacy & Security** (scroll to *"Verificator was blocked..."* and click **Open Anyway**).
+   - **Method B (Terminal):** Remove the quarantine attribute manually from the downloaded app:
+     ```bash
+     xattr -dr com.apple.quarantine /Applications/Verificator.app
+     ```
+   - **DMG Quarantine:** On newer macOS versions, Gatekeeper may also block opening the downloaded `.dmg` disk image directly. If prompted, allow it in **Privacy & Security**, or strip the quarantine flag prior to mounting:
+     ```bash
+     xattr -d com.apple.quarantine ~/Downloads/Verificator-*.dmg
+     ```
 
 ## Development
 

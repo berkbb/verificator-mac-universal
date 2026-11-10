@@ -24,5 +24,22 @@
 ## 3. Sibling App Architecture Parity
 
 `Verificator` follows the exact structural conventions of its sibling macOS Universal apps (`Arhivar`, `Curatare`, `Copiator`, `Redactor`):
-- **Core Target (`VerificatorCore`):** `AppInfo`, `Localization` (`AppLanguage`, `StringTable`, `LKey`), `AppLog`, `AppUpdate` (`AppUpdateChecker`, `UpdateSignature`, `UpdateChecksums`), `ForensicModels`, and `ForensicScanner`.
+- **Core Target (`VerificatorCore`):** `AppInfo`, `Localization` (`AppLanguage`, `StringTable`, `LKey`), `AppLog`, `AppUpdate` (`AppUpdateChecker`, `UpdateSignature`, `UpdateChecksums`), `ForensicModels`, `ForensicScanner`, and `LocalModels` (`ForensicAI`, `LocalModelServer`, `AIPrerequisites`).
 - **Executable Target (`Verificator`):** `VerificatorApp`, `AppSettings`, `AppModel`, `LogStore`, `ContentView`, `SettingsView`, `AboutView`, `LicenseViewerSheet`, and `LogView`.
+
+## 4. Quarantine Inspection & Administrator Elevation (`com.apple.quarantine`)
+
+- **Quarantine Attribute Detection:** Inspects `com.apple.quarantine` on the `.app` root and `Contents/MacOS/<exec>` via `getxattr(..., "com.apple.quarantine", nil, 0, 0, XATTR_NOFOLLOW)`.
+- **Dynamic Action:** When `report.isQuarantined == true`, an interactive **Remove Quarantine (sudo xattr)** action is exposed in the verdict banner and menu bar (`⌘K`).
+- **Administrator Privileges:** Prompts macOS native Touch ID / password prompt via `/usr/bin/osascript` with administrator privileges to execute `/usr/bin/xattr -rd com.apple.quarantine <bundlePath>`.
+- **First-Launch Gatekeeper Warning:** Because Verificator is ad-hoc signed, downloading from GitHub Releases attaches quarantine, requiring either right-click Open, allowing in **System Settings › Privacy & Security**, or `xattr -dr com.apple.quarantine /Applications/Verificator.app`.
+
+## 5. On-Device AI Architecture (`ForensicAI`)
+
+- **Model Sources:**
+  - `Apple Intelligence` (`.apple`): Default first provider on macOS 26+ via Apple `FoundationModels` framework (`SystemLanguageModel.default`).
+  - `Ollama` (`.ollama`): Talks exclusively to `127.0.0.1:11434`; filters out cloud/embedding models.
+  - `LM Studio` (`.lmStudio`): Talks exclusively to `127.0.0.1:1234`; filters out embedding models.
+  - `Automatic` (`.automatic`): Sequential fallback across enabled providers; silent recovery only in this mode.
+- **No-Silent-Switch Policy:** When a specific provider is chosen, Verificator does not secretly fall back to another model if the chosen provider is offline or missing local models; it warns with an amber badge and waits.
+- **In-Window Selector:** Available directly in the AI Assistant card within the main window as well as the Settings window.

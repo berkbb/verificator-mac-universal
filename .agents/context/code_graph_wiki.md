@@ -20,8 +20,10 @@
 ## 2. Module & Call Hierarchy
 
 - **`VerificatorCore` (Framework Target):**
-  - `ForensicScanner.auditBundle(at:options:)` → produces `BundleAuditReport` (`IntegrityVerdict`, `[ForensicFinding]`, `[LinkedDylibItem]`, `[BundledLibraryItem]`, `[HookSymbolCategory]`) and logs to `AppLog.shared`.
+  - `ForensicScanner.auditBundle(at:options:)` → produces `BundleAuditReport` (`IntegrityVerdict`, `[ForensicFinding]`, `[LinkedDylibItem]`, `[BundledLibraryItem]`, `[HookSymbolCategory]`, `isQuarantined`) and logs to `AppLog.shared`.
+  - `ForensicScanner.removeQuarantineWithAdminPrivileges(at:)` → executes `/usr/bin/xattr -rd com.apple.quarantine` via `osascript` with administrator privileges.
+  - `LocalModels.swift` (`SuggestionProvider`, `LocalModelServer`, `OnDeviceSuggestionModel`, `LocalServerSuggestionModel`, `FallbackSuggestionModel`, `AIPrerequisites`, `ForensicAI`) → provides on-device Apple Intelligence, local Ollama, and LM Studio assessment.
   - `StringTable` & `AppLanguage` → loads `Resources/{tr,en,ro}.lproj/Localizable.strings`.
   - `AppUpdateChecker`, `UpdateSignature`, `UpdateChecksums` → GitHub Releases check, Ed25519 signature verification, SHA-256 digest parsing.
 - **`Verificator` (Executable Target):**
-  - `VerificatorApp` → hosts `ContentView` (`WindowID.main`), `AboutView` (`WindowID.about`), `LogView` (`WindowID.log`), and `SettingsView`, plus `AppCommands` menu bar commands (`⌘O`, `⌘R` Refresh, `⇧⌘R` Reveal, `⇧⌘C` Copy, `⌘S` Save, `⇧⌘W` Clear, `⌥⌘L` Log).
+  - `VerificatorApp` → hosts `ContentView` (`WindowID.main`), `AboutView` (`WindowID.about`), `LogView` (`WindowID.log`), and `SettingsView`, plus `AppCommands` menu bar commands (`⌘O`, `⌘R` Refresh, `⇧⌘R` Reveal, `⇧⌘C` Copy, `⌘S` Save, `⇧⌘W` Clear, `⌘K` Remove Quarantine, `⌥⌘L` Log).
