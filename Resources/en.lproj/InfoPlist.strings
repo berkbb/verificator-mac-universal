@@ -1,0 +1,5 @@
+/* Application Info.plist strings */
+"CFBundleDisplayName" = "Verificator";
+"CFBundleName" = "Verificator";
+"NSHumanReadableCopyright" = "© 2026 Babadogan Tech and Edu.";
+"macOS Application Bundle" = "macOS Application Bundle";

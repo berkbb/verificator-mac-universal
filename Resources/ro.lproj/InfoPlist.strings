@@ -1,0 +1,5 @@
+/* Texte Info.plist ale aplicației */
+"CFBundleDisplayName" = "Verificator";
+"CFBundleName" = "Verificator";
+"NSHumanReadableCopyright" = "© 2026 Babadogan Tech and Edu.";
+"macOS Application Bundle" = "Pachet de aplicație macOS";

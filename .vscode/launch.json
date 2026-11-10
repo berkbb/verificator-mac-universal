@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:verificator-mac-universal}",
+            "name": "Debug Verificator",
+            "target": "Verificator",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug Verificator"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:verificator-mac-universal}",
+            "name": "Release Verificator",
+            "target": "Verificator",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release Verificator"
+        }
+    ]
+}
