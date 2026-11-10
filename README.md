@@ -2,6 +2,10 @@
 
 A native macOS 26+ forensic application bundle (`.app`) inspector, built with SwiftUI and Liquid Glass as a universal app (Apple Silicon `arm64` + Intel `x86_64`). It performs read-only 4-layer Mach-O, code signature, and dylib injection analysis with **0% false positives** on legitimate Apple, App Store, Developer ID, and local developer builds.
 
+<p align="center">
+  <img src="docs/screenshots/welcome-dark.png" width="850" alt="Verificator welcome screen in dark mode, showing the master-detail sidebar, bundle selection controls, and the forensic drop zone">
+</p>
+
 ## Features
 
 - **4-Layer Zero False-Positive Forensic Engine (`ForensicScanner`)**
@@ -9,8 +13,15 @@ A native macOS 26+ forensic application bundle (`.app`) inspector, built with Sw
   - **Layer 2 — Signature Hijacking Detection:** compares the signing provenance of frameworks inside `Contents/Frameworks` and `Contents/MacOS` against the main executable to detect bundles whose vendor signature was stripped and replaced after injecting a third-party dylib.
   - **Layer 3 — Mach-O Load Command Audit (`otool -L`):** inspects `LC_LOAD_DYLIB` and `LC_LOAD_WEAK_DYLIB` links on the main executable without false-flagging legitimate CMake, Electron, or SwiftPM libraries.
   - **Layer 4 — Runtime Hook & Memory Patch Symbol Categorization (`nm -u`, `strings`):** categorizes imported hook symbols into Objective-C method swizzling (`_method_exchangeImplementations`, `_class_replaceMethod`), Mach VM patching (`_mach_vm_protect`, `_mach_vm_write`, `_mach_vm_remap`), and DYLD ASLR slide inspection (`__dyld_get_image_vmaddr_slide`).
+- **On-Device & Local AI Forensic Assessment (`ForensicAI`)**
+  - Summarizes and interprets forensic findings in the selected language without altering the deterministic verdict (`CLEAN`, `WARNING`, `TAMPERED`).
+  - Supports **Apple Intelligence** (first and default provider on macOS 26+ via `FoundationModels`), local **Ollama** (`127.0.0.1:11434`), local **LM Studio** (`127.0.0.1:1234`), and **Automatic (in order)** fallback.
+  - Strict security boundaries: exclusively talks to `127.0.0.1` with proxy/redirects disabled; filters out cloud/embedding models; warns with an amber badge if a chosen provider is unavailable instead of silently falling back.
+- **Quarantine Removal (`sudo xattr`)**
+  - Dynamically displays a prominent **Remove Quarantine** button when `com.apple.quarantine` is present on the bundle or its executable.
+  - Uses macOS administrator authentication (`Touch ID` / password prompt) to safely clear quarantine flags and immediately re-audits the bundle.
 - **Master–Detail Interface (`NavigationSplitView`)**
-  - Sidebar with forensic inspection sections (**Home**, **Overview & Signature** `⌘1`, **Mach-O & Dylib Analysis** `⌘2`, **Memory & Hook Symbols** `⌘3`, **Raw Forensic Output** `⌘4`) and **Recent Bundles** with live app icons and context menus.
+  - Sidebar with forensic inspection sections (**Home**, **Overview & Signature** `⌘1`, **Mach-O & Dylib Analysis** `⌘2`, **Memory & Hook Symbols** `⌘3`, **Raw Forensic Output** `⌘4`) and **Recent Bundles** with live app icons, verdict indicators, and context menus.
   - Prominent **Refresh (`⌘R`)** and **Clear (`⇧⌘W`)** buttons in the header bar, verdict banner, and menu bar.
   - One-click Markdown report copy (`⇧⌘C`) and `.md` file export (`⌘S`).
 - **Languages:** Turkish (default), English, Romanian (1:1 key parity across dedicated `.lproj` files)
