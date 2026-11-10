@@ -36,10 +36,14 @@ ASSETS=("dist/$NAME.dmg" "dist/$NAME.dmg.sig" "dist/SHA256SUMS.txt")
 for asset in "${ASSETS[@]}"; do [ -f "$asset" ] || fail "$asset oluşmadı"; done
 
 echo "▸ Etiket: $TAG"
-run git tag -a "$TAG" -m "Verificator $VERSION"
-run git push origin "$TAG"
+if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+  run git tag -a "$TAG" -m "Verificator $VERSION"
+  run git push origin "$TAG"
+else
+  echo "  (etiket zaten var: $TAG)"
+fi
 
-RELEASE_ARGS=(release create "$TAG" "${ASSETS[@]}" --repo "$REPO" --title "Verificator $VERSION" --verify-tag)
+RELEASE_ARGS=(release create "$TAG" "${ASSETS[@]}" --repo "$REPO" --title "Verificator $VERSION" --generate-notes --verify-tag)
 [ "$DRAFT" = 1 ] && RELEASE_ARGS+=(--draft)
 echo "▸ GitHub sürümü oluşturuluyor…"
 run gh "${RELEASE_ARGS[@]}"
