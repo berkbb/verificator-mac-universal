@@ -66,4 +66,4 @@
 - [x] **Cryptographically Verified In-App Updates**:
   - [x] Connected `AppUpdateChecker.downloadAndVerify(release:)` to enforce `SHA256SUMS.txt` and Ed25519 `.dmg.sig` verification against `VerificatorUpdatePublicEDKey`, plus one-click **Open Downloaded Archive** and **Show in Finder** actions in Settings.
 - [x] **UI Search, Filtering, Copy, CI & `VerificatorKit` Test Coverage**:
-  - [x] Dylib & batch search, `All`/`Non-System`/`Suspicious` filter, expanded **Raw Forensic Output** (`LC_RPATH`, `Entitlements XML`, `Gatekeeper spctl`), section copy controls, AI Cancel/Copy controls, `⌥⌘S` JSON report export, built-in shortcut collision checks, `.github/workflows/ci.yml`, `set-version.sh` -> `AppInfo` sync, and `VerificatorKit` unit tests.
+  - [x] Dylib & batch search, `All`/`Non-System`/`Suspicious` filter, expanded **Raw Forensic Output** (`LC_RPATH`, `Entitlements XML`, `Gatekeeper spctl`), section copy controls, AI Cancel/Copy controls, `⌥⌘S` JSON report export, built-in shortcut collision checks, `set-version.sh` -> `AppInfo` sync, and `VerificatorKit` unit tests.

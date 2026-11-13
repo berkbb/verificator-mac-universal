@@ -53,7 +53,6 @@ Verificator/
 ├── Support/Info.plist                Bundle metadata, document types, `verificator://` URL scheme, Finder `NSServices`, Ed25519 public key
 ├── Scripts/                          make_icon.swift, build_app.sh, verify_bundle.sh, package.sh,
 │                                     release.sh, set-version.sh, update_signing.swift
-├── .github/workflows/ci.yml          macOS CI workflow (plutil -lint, swift test, universal build, CLI smoke test)
 ├── Tests/VerificatorTests/      Localization parity, update checker, log, and forensic calibration tests
 ├── Paketle.command                   Double-click in Finder to run tests and package into dist/
 ├── Yayimla.command                   Double-click in Finder to publish a release to GitHub Releases
