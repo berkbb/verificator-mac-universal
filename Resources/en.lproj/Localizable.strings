@@ -271,7 +271,7 @@
 "actionBatchScan" = "Batch Scan Folder…";
 "menuBatchScan" = "Batch Scan Folder…";
 "batchTitle" = "Batch Bundle Audit";
-"batchEmptyHint" = "Scan a folder such as /Applications to inspect signature, injection, and quarantine status across all .app bundles in one table.";
+"batchEmptyHint" = "Batch scan a folder such as /Applications or Downloads to inspect signature, injection, and quarantine status across all .app, .dmg, and .pkg/.mpkg items in one table.";
 "batchScanningProgress" = "Scanning: %1$ld / %2$ld — %3$@";
 "batchSummaryStats" = "Total %1$ld · Clean %2$ld · Warning %3$ld · Tampered %4$ld";
 "batchFilterIssues" = "Warnings & Tampered";
@@ -280,13 +280,13 @@
 "batchExportMarkdown" = "Export Markdown";
 "batchExportJSON" = "Export JSON";
 "actionCancelBatch" = "Stop Batch Scan";
-"batchNoBundlesFound" = "No .app bundles were found in the selected folder.";
+"batchNoBundlesFound" = "No .app, .dmg, or .pkg/.mpkg items were found in the selected folder.";
 "fieldExecutableSha256" = "Executable SHA-256";
 "fieldRpaths" = "LC_RPATH Search Paths";
 "rawEntitlementsTitle" = "Entitlements XML";
 "rawRpathsTitle" = "LC_RPATH (otool -l)";
 "rawGatekeeperTitle" = "Gatekeeper Policy (spctl --assess)";
-"batchSearchPlaceholder" = "Search app name, Bundle ID, or Team ID…";
+"batchSearchPlaceholder" = "Search item name, Bundle ID, or Team ID…";
 "batchPartialCancelledBadge" = "Partial Results (Stopped)";
 "appUpdateOpenInstaller" = "Open Downloaded Archive";
 

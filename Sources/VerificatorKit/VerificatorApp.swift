@@ -78,9 +78,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls {
-            AppModel.shared.handleIncomingURL(url)
-        }
+        AppModel.shared.handleIncomingURLs(urls)
         bringMainWindowToFront()
     }
 
@@ -126,14 +124,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
            let rawText = pboard.string(forType: .string)?
                .trimmingCharacters(in: .whitespacesAndNewlines),
            !rawText.isEmpty {
-            if rawText.hasPrefix("file://"),
-               let parsed = URL(string: rawText),
-               parsed.isFileURL {
-                appendIfNew(parsed)
-            } else {
-                let expanded = NSString(string: rawText).expandingTildeInPath
-                if FileManager.default.fileExists(atPath: expanded) {
-                    appendIfNew(URL(fileURLWithPath: expanded))
+            for line in rawText.components(separatedBy: .newlines) {
+                let candidate = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !candidate.isEmpty else { continue }
+                if candidate.hasPrefix("file://"),
+                   let parsed = URL(string: candidate),
+                   parsed.isFileURL {
+                    appendIfNew(parsed)
+                } else {
+                    let expanded = NSString(string: candidate).expandingTildeInPath
+                    if FileManager.default.fileExists(atPath: expanded) {
+                        appendIfNew(URL(fileURLWithPath: expanded))
+                    }
                 }
             }
         }
@@ -148,15 +150,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         error: AutoreleasingUnsafeMutablePointer<NSString?>?
     ) {
         let urls = Self.extractServiceTargetURLs(from: pboard)
-        guard let targetURL = urls.first else {
+        guard !urls.isEmpty else {
             AppLog.shared.warning(.app, "Service invoked with unreadable Finder selection")
             error?.pointee = AppSettings.shared.t(.serviceInvalidSelectionError) as NSString
             return
         }
 
-        AppLog.shared.info(.app, "Service invoked for item", detail: targetURL.path)
+        AppLog.shared.info(.app, "Service invoked", detail: urls.map(\.path).joined(separator: ", "))
         NSApplication.shared.activate(ignoringOtherApps: true)
-        AppModel.shared.handleIncomingURL(targetURL)
+        AppModel.shared.handleIncomingURLs(urls)
         bringMainWindowToFront()
     }
 

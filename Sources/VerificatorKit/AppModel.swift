@@ -439,12 +439,41 @@ public final class AppModel {
     }
 
     public func startBatchScan(in directoryURL: URL) {
+        let opts = settings.scanOptions
+        runBatchScan(directoryLabel: directoryURL.lastPathComponent) { token, progress in
+            ForensicScanner.auditDirectory(
+                at: directoryURL,
+                options: opts,
+                cancellation: token,
+                onProgress: progress
+            )
+        }
+    }
+
+    public func startBatchScan(targets targetURLs: [URL], label: String? = nil) {
+        let directoryLabel = label ?? (targetURLs.first?.deletingLastPathComponent().path ?? "")
+        let titleLabel = targetURLs.first?.lastPathComponent ?? directoryLabel
+        let opts = settings.scanOptions
+        runBatchScan(directoryLabel: titleLabel) { token, progress in
+            ForensicScanner.auditTargets(
+                targetURLs,
+                directoryLabel: directoryLabel,
+                options: opts,
+                cancellation: token,
+                onProgress: progress
+            )
+        }
+    }
+
+    private func runBatchScan(
+        directoryLabel: String,
+        work: @escaping @Sendable (ScanCancellationToken, @escaping @Sendable (Int, Int, String) -> Void) -> BatchAuditSummary
+    ) {
         cancelBatchScan()
         isBatchMode = true
         isBatchScanning = true
-        batchProgress = (0, 0, directoryURL.lastPathComponent)
+        batchProgress = (0, 0, directoryLabel)
         dockProgress.update(fraction: nil, active: true, enabled: true)
-        let opts = settings.scanOptions
         let token = ScanCancellationToken()
         activeBatchToken = token
 
@@ -455,11 +484,7 @@ public final class AppModel {
         let weakBox = WeakModelBox(self)
 
         activeBatchTask = Task.detached {
-            let summary = ForensicScanner.auditDirectory(
-                at: directoryURL,
-                options: opts,
-                cancellation: token
-            ) { index, total, currentName in
+            let summary = work(token) { index, total, currentName in
                 Task { @MainActor in
                     guard let model = weakBox.value, !token.isCancelled else { return }
                     model.batchProgress = (index, total, currentName)
@@ -635,29 +660,46 @@ public final class AppModel {
         }
     }
 
-    public func setDiffFile(_ url: URL, forBaseline: Bool) {
-        let resolved = url.pathExtension.lowercased() == "json"
+    private func resolvedDiffTarget(_ url: URL) -> URL {
+        url.pathExtension.lowercased() == "json"
             ? url.standardizedFileURL
             : resolveAuditTargetURL(from: url)
+    }
+
+    private func cachedDiffEndpoint(for resolved: URL) -> AuditDiffEndpoint? {
+        guard resolved.pathExtension.lowercased() != "json",
+              let cached = cachedReports[resolved.path] else {
+            return nil
+        }
+        return AuditDiffEndpoint(sourceDescription: resolved.path, isFromSavedJSON: false, report: cached)
+    }
+
+    public func setDiffFile(_ url: URL, forBaseline: Bool) {
+        let resolved = resolvedDiffTarget(url)
+        let endpoint = cachedDiffEndpoint(for: resolved)
         diffError = nil
         if forBaseline {
             diffBaselineURL = resolved
-            if let cached = cachedReports[resolved.path], resolved.pathExtension.lowercased() != "json" {
-                diffBaselineEndpoint = AuditDiffEndpoint(sourceDescription: resolved.path, isFromSavedJSON: false, report: cached)
-            } else {
-                diffBaselineEndpoint = nil
-            }
+            diffBaselineEndpoint = endpoint
         } else {
             diffTargetURL = resolved
-            if let cached = cachedReports[resolved.path], resolved.pathExtension.lowercased() != "json" {
-                diffTargetEndpoint = AuditDiffEndpoint(sourceDescription: resolved.path, isFromSavedJSON: false, report: cached)
-            } else {
-                diffTargetEndpoint = nil
-            }
+            diffTargetEndpoint = endpoint
         }
         if diffBaselineURL != nil && diffTargetURL != nil {
             runDiffComparison()
         }
+    }
+
+    public func openDiff(baseline: URL, target: URL) {
+        let resolvedBase = resolvedDiffTarget(baseline)
+        let resolvedTarget = resolvedDiffTarget(target)
+        workspaceMode = .diff
+        diffError = nil
+        diffBaselineURL = resolvedBase
+        diffBaselineEndpoint = cachedDiffEndpoint(for: resolvedBase)
+        diffTargetURL = resolvedTarget
+        diffTargetEndpoint = cachedDiffEndpoint(for: resolvedTarget)
+        runDiffComparison()
     }
 
     public func useCurrentReportInDiff(forBaseline: Bool) {
@@ -882,20 +924,78 @@ public final class AppModel {
         copyTextToClipboard(cliInstallCommand)
     }
 
+    private func isPlainDirectory(_ url: URL) -> Bool {
+        var isDir: ObjCBool = false
+        let standardized = url.standardizedFileURL
+        let ext = standardized.pathExtension.lowercased()
+        let exists = FileManager.default.fileExists(atPath: standardized.path, isDirectory: &isDir)
+        return exists
+            && isDir.boolValue
+            && !ForensicScanner.supportedBundleExtensions.contains(ext)
+            && !ForensicScanner.supportedContainerExtensions.contains(ext)
+    }
+
+    private func isDiffEligibleFileURL(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        let standardized = url.standardizedFileURL
+        guard FileManager.default.fileExists(atPath: standardized.path), !isPlainDirectory(standardized) else {
+            return false
+        }
+        if standardized.pathExtension.lowercased() == "json" {
+            return true
+        }
+        return isSupportedBundleURL(standardized)
+    }
+
+    public func handleIncomingURLs(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        if urls.count == 1, let single = urls.first {
+            handleIncomingURL(single)
+            return
+        }
+
+        if urls.count == 2,
+           isDiffEligibleFileURL(urls[0]),
+           isDiffEligibleFileURL(urls[1]) {
+            openDiff(baseline: urls[0], target: urls[1])
+            return
+        }
+
+        let fileURLs = urls.filter(\.isFileURL).map(\.standardizedFileURL)
+        guard !fileURLs.isEmpty else {
+            for url in urls {
+                handleIncomingURL(url)
+            }
+            return
+        }
+
+        var expanded: [URL] = []
+        var seen = Set<String>()
+        for url in fileURLs {
+            if isPlainDirectory(url) {
+                for item in ForensicScanner.batchTargets(in: url) where seen.insert(item.path).inserted {
+                    expanded.append(item)
+                }
+            } else if FileManager.default.fileExists(atPath: url.path) {
+                let resolved = resolveAuditTargetURL(from: url)
+                if seen.insert(resolved.path).inserted {
+                    expanded.append(resolved)
+                }
+            }
+        }
+
+        let label = fileURLs.first?.deletingLastPathComponent().path
+        startBatchScan(targets: expanded, label: label)
+    }
+
     public func handleIncomingURL(_ url: URL) {
         if url.isFileURL {
-            var isDir: ObjCBool = false
             let standardized = url.standardizedFileURL
-            let ext = standardized.pathExtension.lowercased()
-            let exists = FileManager.default.fileExists(atPath: standardized.path, isDirectory: &isDir)
-            if exists,
-               isDir.boolValue,
-               !ForensicScanner.supportedBundleExtensions.contains(ext),
-               !ForensicScanner.supportedContainerExtensions.contains(ext) {
+            if isPlainDirectory(standardized) {
                 startBatchScan(in: standardized)
             } else if isSupportedBundleURL(standardized) {
                 scan(standardized)
-            } else if exists {
+            } else if FileManager.default.fileExists(atPath: standardized.path) {
                 scan(standardized, allowUnsupported: true)
             }
             return

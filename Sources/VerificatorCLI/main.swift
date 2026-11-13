@@ -17,7 +17,7 @@ private func printUsage() {
       For --diff, <baseline> and <target> can be any supported target above or saved Verificator .json reports.
 
     OPTIONS:
-      --batch                 Scan every .app bundle inside <path>
+      --batch                 Scan every .app, .dmg, .pkg, and .mpkg item inside <path>
       --diff <old> <new>      Compare two bundles, binaries, or saved .json audit reports
       --persistence           Audit LaunchAgents, LaunchDaemons, and PrivilegedHelperTools
       --running               Audit active macOS processes and DYLD_INSERT_LIBRARIES state
@@ -360,7 +360,9 @@ case .singleOrBatch:
         exit(2)
     }
 
-    let isBundledTarget = ForensicScanner.supportedBundleExtensions.contains(targetURL.pathExtension.lowercased())
+    let ext = targetURL.pathExtension.lowercased()
+    let isBundledTarget = ForensicScanner.supportedBundleExtensions.contains(ext)
+        || ForensicScanner.supportedContainerExtensions.contains(ext)
 
     if forceBatch || (isDirectory.boolValue && !isBundledTarget) {
         let emitJSON = outputJSON

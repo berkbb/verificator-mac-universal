@@ -96,22 +96,27 @@ struct BundleVerificationTests {
         defer { try? FileManager.default.removeItem(at: tempDir) }
 
         let targetFile = tempDir.appendingPathComponent("Sample.dmg")
+        let secondFile = tempDir.appendingPathComponent("Other.pkg")
         try Data("dmg".utf8).write(to: targetFile)
+        try Data("pkg".utf8).write(to: secondFile)
 
         let pboard = NSPasteboard.withUniqueName()
         defer { pboard.releaseGlobally() }
 
         pboard.clearContents()
-        pboard.writeObjects([targetFile as NSURL])
-        #expect(AppDelegate.extractServiceTargetURLs(from: pboard).first?.standardizedFileURL == targetFile.standardizedFileURL)
+        pboard.writeObjects([targetFile as NSURL, secondFile as NSURL])
+        let urlObjects = AppDelegate.extractServiceTargetURLs(from: pboard)
+        #expect(urlObjects == [targetFile.standardizedFileURL, secondFile.standardizedFileURL])
 
         pboard.clearContents()
-        pboard.setPropertyList([targetFile.path], forType: NSPasteboard.PasteboardType("NSFilenamesPboardType"))
-        #expect(AppDelegate.extractServiceTargetURLs(from: pboard).first?.standardizedFileURL == targetFile.standardizedFileURL)
+        pboard.setPropertyList([targetFile.path, secondFile.path], forType: NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        let filenameItems = AppDelegate.extractServiceTargetURLs(from: pboard)
+        #expect(filenameItems == [targetFile.standardizedFileURL, secondFile.standardizedFileURL])
 
         pboard.clearContents()
-        pboard.setString(targetFile.path, forType: .string)
-        #expect(AppDelegate.extractServiceTargetURLs(from: pboard).first?.standardizedFileURL == targetFile.standardizedFileURL)
+        pboard.setString("\(targetFile.path)\n\(secondFile.path)", forType: .string)
+        let stringItems = AppDelegate.extractServiceTargetURLs(from: pboard)
+        #expect(stringItems == [targetFile.standardizedFileURL, secondFile.standardizedFileURL])
 
         let delegate = AppDelegate()
         #expect(delegate.responds(to: NSSelectorFromString("auditServiceItem:userData:error:")))

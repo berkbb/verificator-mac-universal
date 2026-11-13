@@ -271,7 +271,7 @@
 "actionBatchScan" = "Scanează Dosar în Lot…";
 "menuBatchScan" = "Scanează Dosar în Lot…";
 "batchTitle" = "Audit în Lot al Pachetelor";
-"batchEmptyHint" = "Scanați un dosar precum /Applications pentru a inspecta starea semnăturilor, injecțiilor și carantinei tuturor pachetelor .app într-un singur tabel.";
+"batchEmptyHint" = "Scanați în lot un dosar precum /Applications sau Downloads pentru a inspecta starea semnăturilor, injecțiilor și carantinei tuturor elementelor .app, .dmg și .pkg/.mpkg într-un singur tabel.";
 "batchScanningProgress" = "Se scanează: %1$ld / %2$ld — %3$@";
 "batchSummaryStats" = "Total %1$ld · Curat %2$ld · Avertisment %3$ld · Modificat %4$ld";
 "batchFilterIssues" = "Avertismente & Modificate";
@@ -280,13 +280,13 @@
 "batchExportMarkdown" = "Exportă Markdown";
 "batchExportJSON" = "Exportă JSON";
 "actionCancelBatch" = "Oprește Scanarea în Lot";
-"batchNoBundlesFound" = "Nu au fost găsite pachete .app în dosarul selectat.";
+"batchNoBundlesFound" = "Nu au fost găsite elemente .app, .dmg sau .pkg/.mpkg în dosarul selectat.";
 "fieldExecutableSha256" = "SHA-256 Executabil";
 "fieldRpaths" = "Căi de Căutare LC_RPATH";
 "rawEntitlementsTitle" = "Drepturi (Entitlements XML)";
 "rawRpathsTitle" = "LC_RPATH (otool -l)";
 "rawGatekeeperTitle" = "Politică Gatekeeper (spctl --assess)";
-"batchSearchPlaceholder" = "Caută nume aplicație, Bundle ID sau Team ID…";
+"batchSearchPlaceholder" = "Caută numele elementului, Bundle ID sau Team ID…";
 "batchPartialCancelledBadge" = "Rezultate Parțiale (Oprit)";
 "appUpdateOpenInstaller" = "Deschide Arhiva Descărcată";
 

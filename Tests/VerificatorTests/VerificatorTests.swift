@@ -690,6 +690,28 @@ struct VerificatorTests {
         let cancelledBatch = ForensicScanner.auditDirectory(at: tempDir, cancellation: token)
         #expect(cancelledBatch.wasCancelled)
 
+        // Expanded folder batch scan covers .app, .dmg, .pkg, and .mpkg while ignoring unrelated files
+        let mixedDir = tempDir.appendingPathComponent("MixedDownloads", isDirectory: true)
+        let miniApp = mixedDir.appendingPathComponent("Mini.app/Contents/MacOS", isDirectory: true)
+        try fm.createDirectory(at: miniApp, withIntermediateDirectories: true)
+        try fm.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: miniApp.appendingPathComponent("Mini"))
+        let sampleDMG = mixedDir.appendingPathComponent("Sample.dmg")
+        let samplePKG = mixedDir.appendingPathComponent("Installer.pkg")
+        let sampleMPKG = mixedDir.appendingPathComponent("Bundle.mpkg")
+        let ignoredTXT = mixedDir.appendingPathComponent("Notes.txt")
+        try Data("dmg".utf8).write(to: sampleDMG)
+        try Data("pkg".utf8).write(to: samplePKG)
+        try Data("mpkg".utf8).write(to: sampleMPKG)
+        try Data("hello".utf8).write(to: ignoredTXT)
+
+        let mixedBatch = ForensicScanner.auditDirectory(at: mixedDir)
+        #expect(mixedBatch.reports.count == 4)
+        let kinds = Set(mixedBatch.reports.map(\.targetKind))
+        #expect(kinds.contains(.appBundle))
+        #expect(kinds.contains(.diskImage))
+        #expect(kinds.contains(.installerPackage))
+        #expect(!mixedBatch.reports.contains(where: { $0.bundlePath.hasSuffix("Notes.txt") }))
+
         // Nested .appex/.xpc bundle & executable SHA-256 verification on real bundle if Safari is present
         let safariURL = URL(fileURLWithPath: "/Applications/Safari.app")
         if fm.fileExists(atPath: safariURL.path) {
@@ -1007,5 +1029,23 @@ struct VerificatorTests {
         #expect(model.workspaceMode == .diff)
         #expect(model.diffBaselineURL?.path == "/usr/bin/codesign")
         #expect(model.diffTargetURL?.path == "/usr/bin/codesign")
+
+        // Two Finder items passed simultaneously jump straight to Diff comparison
+        model.handleIncomingURLs([
+            URL(fileURLWithPath: "/usr/bin/codesign"),
+            URL(fileURLWithPath: "/usr/bin/true"),
+        ])
+        #expect(model.workspaceMode == .diff)
+        #expect(model.diffBaselineURL?.path == "/usr/bin/codesign")
+        #expect(model.diffTargetURL?.path == "/usr/bin/true")
+
+        // Three+ Finder items passed simultaneously open a Batch multi-target scan
+        model.handleIncomingURLs([
+            URL(fileURLWithPath: "/usr/bin/codesign"),
+            URL(fileURLWithPath: "/usr/bin/true"),
+            URL(fileURLWithPath: "/usr/bin/false"),
+        ])
+        #expect(model.workspaceMode == .batch)
+        model.cancelBatchScan()
     }
 }

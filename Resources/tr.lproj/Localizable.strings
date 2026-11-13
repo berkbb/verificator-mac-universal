@@ -271,7 +271,7 @@
 "actionBatchScan" = "Toplu Klasör Tara…";
 "menuBatchScan" = "Klasörü Toplu Tara…";
 "batchTitle" = "Toplu Paket Denetimi";
-"batchEmptyHint" = "/Applications gibi bir klasörü toplu tarayarak tüm .app paketlerinin imza, enjeksiyon ve karantina durumunu tek tabloda inceleyin.";
+"batchEmptyHint" = "/Applications veya İndirilenler gibi bir klasörü toplu tarayarak tüm .app, .dmg ve .pkg/.mpkg öğelerinin imza, enjeksiyon ve karantina durumunu tek tabloda inceleyin.";
 "batchScanningProgress" = "Taranıyor: %1$ld / %2$ld — %3$@";
 "batchSummaryStats" = "Toplam %1$ld · Temiz %2$ld · Uyarı %3$ld · Müdahale %4$ld";
 "batchFilterIssues" = "Uyarı & Müdahale";
@@ -280,13 +280,13 @@
 "batchExportMarkdown" = "Markdown Özeti";
 "batchExportJSON" = "JSON Raporu";
 "actionCancelBatch" = "Toplu Taramayı Durdur";
-"batchNoBundlesFound" = "Seçilen klasörde .app paketi bulunamadı.";
+"batchNoBundlesFound" = "Seçilen klasörde .app, .dmg veya .pkg/.mpkg öğesi bulunamadı.";
 "fieldExecutableSha256" = "SHA-256 (Çalıştırılabilir)";
 "fieldRpaths" = "LC_RPATH Arama Yolları";
 "rawEntitlementsTitle" = "Yetkiler (Entitlements XML)";
 "rawRpathsTitle" = "LC_RPATH (otool -l)";
 "rawGatekeeperTitle" = "Gatekeeper Politikası (spctl --assess)";
-"batchSearchPlaceholder" = "Uygulama adı, Bundle ID veya Team ID ara…";
+"batchSearchPlaceholder" = "Öğe adı, Bundle ID veya Team ID ara…";
 "batchPartialCancelledBadge" = "Kısmi Sonuç (Durduruldu)";
 "appUpdateOpenInstaller" = "Disk Kalıbını Aç";
 

@@ -38,6 +38,7 @@ This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) f
   - **Deterministic `SplitMix64` Fuzz & Guard Tests:** Added `FuzzTests`, `SiblingSecurityAdditionsTests`, and `DockProgressTests`, and extended `BundleVerificationTests` and `Scripts/verify_bundle.sh` to validate `InternetAccessPolicy.plist` and per-language `InternetAccessPolicy.strings`.
 
 ### Changed
+- **Expanded Batch Directory & Multi-Selection Scanning:** Extended `ForensicScanner.auditDirectory` (via `batchTargets(in:)` and shared `auditTargets(_:)`) from `.app`-only scans to also include `.dmg` disk images and `.pkg` / `.mpkg` installers in the selected folder, updated `verificator-cli --batch` and trilingual batch UI copy (`tr`/`en`/`ro`), and routed 2 Finder-selected items in Services / Open directly to **Compare / Diff** (and 3+ items or multiple folders to multi-target Batch Audit) via `AppModel.handleIncomingURLs`.
 - **Universal Forensic Home Screen Copy (`tr`/`en`/`ro`):** Updated main window header subtitle, idle drop zone prompts, action buttons, and menu/settings strings from `.app`-only wording to clearly highlight support for applications, `.dmg` disk images, `.pkg`/`.mpkg` installers, frameworks, `.dylib`/Mach-O binaries, and folders, and increased visibility of the supported-formats badge in `ContentView`.
 
 ### Fixed

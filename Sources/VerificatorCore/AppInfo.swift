@@ -3,7 +3,7 @@ import Foundation
 
 public enum AppInfo {
     public static let fallbackVersion = "1.3.0"
-    public static let fallbackBuild = "8"
+    public static let fallbackBuild = "9"
     public static let fallbackRepository = "berkbb/verificator-mac-universal"
 
     private static let resolvedPlist: [String: String]? = {

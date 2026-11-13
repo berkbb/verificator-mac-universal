@@ -57,6 +57,12 @@ public enum ForensicScanner {
         "dylib", "so",
     ]
 
+    /// Klasör içi toplu denetimlerde (`auditDirectory`) taranan uzantılar:
+    /// `.app` uygulamaları ve `.pkg` / `.mpkg` / `.dmg` kurulum kalıpları.
+    public static let batchAuditableExtensions: Set<String> = [
+        "app", "pkg", "mpkg", "dmg",
+    ]
+
     public static let requiredTools: [(name: String, path: String)] = [
         ("codesign", "/usr/bin/codesign"),
         ("spctl", "/usr/sbin/spctl"),
@@ -1924,9 +1930,49 @@ public enum ForensicScanner {
         return max(1, Int(elapsed.components.seconds * 1000 + elapsed.components.attoseconds / 1_000_000_000_000_000))
     }
 
-    /// Belirtilen klasördeki tüm `.app` paketlerini sınırlı eşzamanlılıkla (sıralı çıktı korunarak) denetler.
+    /// Verilen klasör içindeki toplu denetlenebilir öğeleri (`.app`, `.dmg`, `.pkg`, `.mpkg`) alfabetik sırada döndürür.
+    public static func batchTargets(in directoryURL: URL) -> [URL] {
+        let entries = (try? FileManager.default.contentsOfDirectory(
+            at: directoryURL,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        )) ?? []
+        return entries
+            .filter { batchAuditableExtensions.contains($0.pathExtension.lowercased()) }
+            .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
+    }
+
+    /// Belirtilen klasördeki tüm `.app`, `.dmg`, `.pkg` ve `.mpkg` öğelerini sınırlı eşzamanlılıkla (sıralı çıktı korunarak) denetler.
     public static func auditDirectory(
         at directoryURL: URL,
+        options: ScanOptions = ScanOptions(),
+        cancellation: ScanCancellationToken? = nil,
+        maxConcurrentScans: Int = 4,
+        onProgress: (@Sendable (_ index: Int, _ total: Int, _ currentName: String) -> Void)? = nil
+    ) -> BatchAuditSummary {
+        if cancellation?.isCancelled == true {
+            return BatchAuditSummary(
+                directoryPath: directoryURL.path,
+                scannedAt: makePosixDateFormatter().string(from: Date()),
+                reports: [],
+                wasCancelled: true
+            )
+        }
+        let targets = batchTargets(in: directoryURL)
+        return auditTargets(
+            targets,
+            directoryLabel: directoryURL.path,
+            options: options,
+            cancellation: cancellation,
+            maxConcurrentScans: maxConcurrentScans,
+            onProgress: onProgress
+        )
+    }
+
+    /// Verilen hedef URL listesini (`.app`, `.dmg`, `.pkg`, `.mpkg`, çerçeve veya ikili dosya) sınırlı eşzamanlılıkla denetler.
+    public static func auditTargets(
+        _ targetURLs: [URL],
+        directoryLabel: String = "",
         options: ScanOptions = ScanOptions(),
         cancellation: ScanCancellationToken? = nil,
         maxConcurrentScans: Int = 4,
@@ -1959,20 +2005,16 @@ public enum ForensicScanner {
             }
         }
 
-        let fm = FileManager.default
-        let entries = (try? fm.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        )) ?? []
-        let appBundles = entries
-            .filter { $0.pathExtension.lowercased() == "app" }
-            .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
+        var seen = Set<String>()
+        let uniqueTargets = targetURLs.map(\.standardizedFileURL).filter { seen.insert($0.path).inserted }
+        let label = directoryLabel.isEmpty
+            ? (uniqueTargets.first?.deletingLastPathComponent().path ?? "")
+            : directoryLabel
 
-        let total = appBundles.count
-        guard total > 0 else {
+        let total = uniqueTargets.count
+        guard total > 0, cancellation?.isCancelled != true else {
             return BatchAuditSummary(
-                directoryPath: directoryURL.path,
+                directoryPath: label,
                 scannedAt: makePosixDateFormatter().string(from: Date()),
                 reports: [],
                 wasCancelled: cancellation?.isCancelled == true
@@ -1985,7 +2027,7 @@ public enum ForensicScanner {
         let queue = DispatchQueue(label: "com.babadogantech.verificator.batch", attributes: .concurrent)
         let accumulator = BatchAccumulator(count: total)
 
-        for (idx, appURL) in appBundles.enumerated() {
+        for (idx, targetURL) in uniqueTargets.enumerated() {
             if cancellation?.isCancelled == true { break }
             semaphore.wait()
             if cancellation?.isCancelled == true {
@@ -2000,8 +2042,8 @@ public enum ForensicScanner {
                 }
                 if cancellation?.isCancelled == true { return }
                 let progressIndex = accumulator.nextIndex()
-                onProgress?(progressIndex, total, appURL.lastPathComponent)
-                let report = auditBundle(at: appURL, options: options, cancellation: cancellation)
+                onProgress?(progressIndex, total, targetURL.lastPathComponent)
+                let report = auditTarget(at: targetURL, options: options, cancellation: cancellation)
                 if cancellation?.isCancelled == true { return }
                 accumulator.store(report, at: idx)
             }
@@ -2009,7 +2051,7 @@ public enum ForensicScanner {
 
         group.wait()
         return BatchAuditSummary(
-            directoryPath: directoryURL.path,
+            directoryPath: label,
             scannedAt: makePosixDateFormatter().string(from: Date()),
             reports: accumulator.finalizedReports,
             wasCancelled: cancellation?.isCancelled == true
