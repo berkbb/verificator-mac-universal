@@ -56,12 +56,16 @@ public struct VerificatorApp: App {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApplication.shared.servicesProvider = self
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
         NSApplication.shared.servicesProvider = self
-        NSUpdateDynamicServices()
         ChildProcessGuard.install()
         LaunchServicesRegistration.registerIfBuildChanged()
+        NSUpdateDynamicServices()
         AppSettings.shared.applyAppearance()
     }
 
@@ -77,36 +81,94 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         for url in urls {
             AppModel.shared.handleIncomingURL(url)
         }
+        bringMainWindowToFront()
     }
 
-    @objc func auditServiceItem(
+    static func extractServiceTargetURLs(from pboard: NSPasteboard) -> [URL] {
+        var collected: [URL] = []
+        var seen = Set<String>()
+
+        func appendIfNew(_ url: URL) {
+            let resolved = ((url as NSURL).filePathURL ?? url).standardizedFileURL
+            guard resolved.isFileURL else { return }
+            if seen.insert(resolved.path).inserted {
+                collected.append(resolved)
+            }
+        }
+
+        if let urls = pboard.readObjects(
+            forClasses: [NSURL.self],
+            options: [.urlReadingFileURLsOnly: true]
+        ) as? [URL] {
+            for url in urls {
+                appendIfNew(url)
+            }
+        }
+
+        if let paths = pboard.propertyList(
+            forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")
+        ) as? [String] {
+            for path in paths where !path.isEmpty {
+                appendIfNew(URL(fileURLWithPath: path))
+            }
+        }
+
+        if collected.isEmpty,
+           let rawFileURL = pboard.string(forType: .fileURL)?
+               .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawFileURL.isEmpty,
+           let parsed = URL(string: rawFileURL),
+           parsed.isFileURL {
+            appendIfNew(parsed)
+        }
+
+        if collected.isEmpty,
+           let rawText = pboard.string(forType: .string)?
+               .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawText.isEmpty {
+            if rawText.hasPrefix("file://"),
+               let parsed = URL(string: rawText),
+               parsed.isFileURL {
+                appendIfNew(parsed)
+            } else {
+                let expanded = NSString(string: rawText).expandingTildeInPath
+                if FileManager.default.fileExists(atPath: expanded) {
+                    appendIfNew(URL(fileURLWithPath: expanded))
+                }
+            }
+        }
+
+        return collected
+    }
+
+    @objc(auditServiceItem:userData:error:)
+    func auditServiceItem(
         _ pboard: NSPasteboard,
         userData: String?,
-        error: AutoreleasingUnsafeMutablePointer<NSString?>
+        error: AutoreleasingUnsafeMutablePointer<NSString?>?
     ) {
-        let urls = (pboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-        var candidateURL = urls.first
-
-        if candidateURL == nil,
-           let paths = pboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String],
-           let first = paths.first, !first.isEmpty {
-            candidateURL = URL(fileURLWithPath: first)
-        }
-
-        if candidateURL == nil,
-           let rawText = pboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           !rawText.isEmpty,
-           FileManager.default.fileExists(atPath: rawText) {
-            candidateURL = URL(fileURLWithPath: rawText)
-        }
-
-        guard let targetURL = candidateURL else {
-            error.pointee = AppSettings.shared.t(.serviceInvalidSelectionError) as NSString
+        let urls = Self.extractServiceTargetURLs(from: pboard)
+        guard let targetURL = urls.first else {
+            AppLog.shared.warning(.app, "Service invoked with unreadable Finder selection")
+            error?.pointee = AppSettings.shared.t(.serviceInvalidSelectionError) as NSString
             return
         }
 
+        AppLog.shared.info(.app, "Service invoked for item", detail: targetURL.path)
         NSApplication.shared.activate(ignoringOtherApps: true)
         AppModel.shared.handleIncomingURL(targetURL)
+        bringMainWindowToFront()
+    }
+
+    private func bringMainWindowToFront() {
+        if let window = NSApp.windows.first(where: { $0.identifier?.rawValue == WindowID.main }) {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            NSApp.windows.first(where: { $0.identifier?.rawValue == WindowID.main })?.makeKeyAndOrderFront(nil)
+        }
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

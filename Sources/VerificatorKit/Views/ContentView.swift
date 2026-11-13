@@ -493,8 +493,8 @@ struct ContentView: View {
                 Circle()
                     .fill(Color.blue.opacity(0.1))
                     .frame(width: 110, height: 110)
-                Image(systemName: "arrow.down.app.fill")
-                    .font(.system(size: 52))
+                Image(systemName: "arrow.down.doc.fill")
+                    .font(.system(size: 50))
                     .foregroundStyle(.blue)
             }
 
@@ -508,9 +508,12 @@ struct ContentView: View {
                 .multilineTextAlignment(.center)
 
             Text(settings.t(.dropZoneSupportedHintExpanded))
-                .font(.caption)
-                .foregroundStyle(.tertiary)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Capsule().fill(.quaternary.opacity(0.6)))
 
             HStack(spacing: 12) {
                 Button {
@@ -759,6 +762,7 @@ struct ContentView: View {
                         systemImage: "app.dashed",
                         description: Text(settings.t(.batchNoBundlesFound))
                     )
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     let query = batchSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
                     let filteredReports = summary.reports.filter { item in
@@ -859,13 +863,12 @@ struct ContentView: View {
                     }
                 }
             } else if !model.isBatchScanning {
-                Spacer()
                 ContentUnavailableView(
                     settings.t(.batchTitle),
                     systemImage: "square.grid.2x2",
                     description: Text(settings.t(.batchEmptyHint))
                 )
-                Spacer()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

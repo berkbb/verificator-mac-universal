@@ -66,7 +66,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>6</string>
+	<string>8</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.developer-tools</string>
 	<key>LSMinimumSystemVersion</key>
@@ -87,11 +87,12 @@
 			<string>auditServiceItem</string>
 			<key>NSPortName</key>
 			<string>Verificator</string>
-			<key>NSSendTypes</key>
+			<key>NSRequiredContext</key>
+			<dict/>
+			<key>NSSendFileTypes</key>
 			<array>
-				<string>NSFilenamesPboardType</string>
-				<string>public.file-url</string>
-				<string>NSStringPboardType</string>
+				<string>public.folder</string>
+				<string>public.item</string>
 			</array>
 		</dict>
 	</array>

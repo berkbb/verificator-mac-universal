@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-only
+import AppKit
 import Foundation
 import Testing
 @testable import VerificatorCore
+@testable import VerificatorKit
 
 @Suite("Bundle & System Resource Verification Tests")
 struct BundleVerificationTests {
@@ -74,10 +76,45 @@ struct BundleVerificationTests {
         #expect(schemes.contains("verificator"))
 
         let services = dict["NSServices"] as? [[String: Any]] ?? []
-        let hasAuditService = services.contains { service in
+        let auditService = services.first { service in
             (service["NSMessage"] as? String) == "auditServiceItem"
         }
-        #expect(hasAuditService)
+        #expect(auditService != nil)
+        #expect(auditService?["NSPortName"] as? String == "Verificator")
+        #expect(auditService?["NSRequiredContext"] as? [String: Any] != nil)
+        let sendFileTypes = Set(auditService?["NSSendFileTypes"] as? [String] ?? [])
+        #expect(sendFileTypes.contains("public.item"))
+        #expect(sendFileTypes.contains("public.folder"))
+    }
+
+    @Test("Finder Service Pasteboard Extraction & Selector Contract")
+    @MainActor
+    func finderServicePasteboardExtraction() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("verificator-service-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        let targetFile = tempDir.appendingPathComponent("Sample.dmg")
+        try Data("dmg".utf8).write(to: targetFile)
+
+        let pboard = NSPasteboard.withUniqueName()
+        defer { pboard.releaseGlobally() }
+
+        pboard.clearContents()
+        pboard.writeObjects([targetFile as NSURL])
+        #expect(AppDelegate.extractServiceTargetURLs(from: pboard).first?.standardizedFileURL == targetFile.standardizedFileURL)
+
+        pboard.clearContents()
+        pboard.setPropertyList([targetFile.path], forType: NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        #expect(AppDelegate.extractServiceTargetURLs(from: pboard).first?.standardizedFileURL == targetFile.standardizedFileURL)
+
+        pboard.clearContents()
+        pboard.setString(targetFile.path, forType: .string)
+        #expect(AppDelegate.extractServiceTargetURLs(from: pboard).first?.standardizedFileURL == targetFile.standardizedFileURL)
+
+        let delegate = AppDelegate()
+        #expect(delegate.responds(to: NSSelectorFromString("auditServiceItem:userData:error:")))
     }
 
     @Test("InternetAccessPolicy.plist & tr/en/ro InternetAccessPolicy.strings Exist with 1:1 Parity")

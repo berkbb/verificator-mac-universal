@@ -37,7 +37,12 @@ This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) f
   - **Volume Encryption & Dock Progress Polish:** Added read-only `VolumeEncryptionInfo` checks highlighting unencrypted removable/external volumes in scan banners and boot FileVault status in Settings, plus `DockProgress` / `DockTileView` bottom-edge progress bar rendering during batch scans.
   - **Deterministic `SplitMix64` Fuzz & Guard Tests:** Added `FuzzTests`, `SiblingSecurityAdditionsTests`, and `DockProgressTests`, and extended `BundleVerificationTests` and `Scripts/verify_bundle.sh` to validate `InternetAccessPolicy.plist` and per-language `InternetAccessPolicy.strings`.
 
+### Changed
+- **Universal Forensic Home Screen Copy (`tr`/`en`/`ro`):** Updated main window header subtitle, idle drop zone prompts, action buttons, and menu/settings strings from `.app`-only wording to clearly highlight support for applications, `.dmg` disk images, `.pkg`/`.mpkg` installers, frameworks, `.dylib`/Mach-O binaries, and folders, and increased visibility of the supported-formats badge in `ContentView`.
+
 ### Fixed
+- **Finder Right-Click Service (`NSServices` & Cold-Launch Handling):** Replaced legacy `NSSendTypes`-only configuration in `Support/Info.plist` with `NSSendFileTypes` (`public.folder`, `public.item`) and `NSRequiredContext`, registered `servicesProvider` earlier in `applicationWillFinishLaunching`, improved `AppDelegate.extractServiceTargetURLs(from:)` (`NSURL.filePathURL`, `NSFilenamesPboardType`, `.fileURL`, `.string` path fallback), ensured main window front ordering (`bringMainWindowToFront`), and routed directory installers/unsupported items cleanly in `AppModel.handleIncomingURL`.
+- **Centered Batch Audit Empty States:** Applied `.frame(maxWidth: .infinity, maxHeight: .infinity)` to both empty states (`batchNoBundlesFound` and `batchEmptyHint`) inside `ContentView.batchAuditView` so they remain centered cleanly across all window sizes.
 - **Zero False-Positive System Framework Calibration:** Fixed `ForensicScanner` handling for dyld-shared-cache system frameworks under `/System/Library/` (such as `/System/Library/Frameworks/AppKit.framework`) where `codesign` reports bundle ambiguity with no standalone disk binary, ensuring they consistently evaluate as `CLEAN`.
 
 ## [1.2.0] — 2026-11-13

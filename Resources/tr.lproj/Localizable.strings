@@ -1,10 +1,10 @@
 "appName" = "Verificator";
 "appTitle" = "Verificator — Evrensel macOS Adli Paket Denetçisi";
-"appSubtitle" = "Herhangi Bir .app Paketi İçin Salt-Okunur Mach-O, Kod İmzası ve Dylib Enjeksiyonu Analizi";
+"appSubtitle" = "Uygulama, .dmg, .pkg ve Mach-O İçin Salt-Okunur Adli Analiz";
 "appTagline" = "Salt-okunur Mach-O, dijital imza ve dylib enjeksiyonu adli denetçisi.";
-"actionSelectApp" = ".app Paketi Seç…";
+"actionSelectApp" = "Dosya veya Paket Seç…";
 "actionRefresh" = "Yenile";
-"actionRefreshHelp" = "Açık olan .app paketini yeniden tara (⌘R)";
+"actionRefreshHelp" = "Açık olan hedefi yeniden tara (⌘R)";
 "actionClear" = "Temizle";
 "actionClearHelp" = "Mevcut analiz raporunu ve ekranı temizle (⇧⌘W)";
 "actionBackHome" = "Ana Ekrana Dön";
@@ -21,10 +21,10 @@
 "sidebarHome" = "Başlangıç";
 "sidebarNoRecents" = "Henüz incelenen paket yok";
 "sidebarRemoveRecent" = "Listeden Kaldır";
-"statusIdle" = "Analiz etmek istediğiniz .app paketini bu alana sürükleyip bırakın";
-"statusIdleHint" = "Finder veya Applications klasöründen herhangi bir macOS uygulamasını (.app) doğrudan pencerenin üzerine bırakabilirsiniz.";
-"statusDropActive" = "Adli Analizi Başlatmak İçin Uygulamayı Bırakın (.app)";
-"statusDropBar" = "Yeni bir .app paketini pencerenin herhangi bir yerine sürükleyip bırakabilirsiniz";
+"statusIdle" = "Denetlemek istediğiniz uygulama, paket, disk kalıbı veya ikili dosyayı buraya bırakın";
+"statusIdleHint" = "Finder veya Applications klasöründen .app uygulaması, .dmg disk kalıbı, .pkg yükleyici, çerçeve, .dylib ya da klasör sürükleyip bırakabilirsiniz.";
+"statusDropActive" = "Adli Analizi Başlatmak İçin Öğeyi Bırakın";
+"statusDropBar" = "Yeni bir uygulama, .dmg, .pkg veya ikili dosyayı pencerenin herhangi bir yerine bırakabilirsiniz";
 "statusScanning" = "Adli analiz yürütülüyor…";
 "verdictClean" = "DOĞRULANDI (Orijinal / Müdahale Edilmemiş Uygulama)";
 "verdictWarning" = "YEREL DERLEME / UYARI (Ad-Hoc veya İmza Uyarısı)";
@@ -92,7 +92,7 @@
 "restartMenuBarNotice" = "Menü çubuğu ve arayüz dinamik olarak çevrilir. Sistem düzeyindeki iletişim kutularının da güncellenmesi için uygulamanın yeniden başlatılması önerilir.";
 "menuAbout" = "Verificator Hakkında";
 "menuCheckAppUpdates" = "Güncellemeleri Denetle…";
-"menuOpenBundle" = ".app Paketi Aç…";
+"menuOpenBundle" = "Dosya veya Paket Aç…";
 "menuRefreshScan" = "Analizi Yenile";
 "menuRevealInFinder" = "Paketi Finder'da Göster";
 "menuCopyReport" = "Raporu Kopyala (Markdown)";
@@ -112,7 +112,7 @@
 "settingsDeepFrameworkCheck" = "Alt kütüphanelerin (Frameworks & MacOS) bireysel kod imzalarını doğrula";
 "settingsDeepFrameworkCheckNote" = "Orijinal üretici imzası ile ana uygulama imzası arasındaki bölünmeleri (Signature Stripping) yakalar ve yanlış pozitifleri sıfırlar.";
 "settingsExtractTargetStrings" = "Enjekte edilen .dylib içinde hedeflenen Swift/ObjC sınıf dizgilerini tara";
-"settingsAutoScanOnDrop" = "Sürükleyip bırakılan .app paketini anında analiz et";
+"settingsAutoScanOnDrop" = "Sürükleyip bırakılan uygulama, paket ve dosyaları anında analiz et";
 "settingsRevealAfterExport" = "Dışa aktarılan Markdown raporunu Finder'da göster";
 "settingsRecentsSection" = "Son İncelenen Paketler";
 "settingsToolsSection" = "macOS Adli Analiz Araçları Durumu";
@@ -142,7 +142,7 @@
 "shortcutResetAll" = "Tüm Kısayolları Sıfırla";
 "shortcutModifierRequired" = "En az bir niteleyici tuş (⌘, ⌥ veya ⌃) kullanılmalıdır.";
 "shortcutConflictWarning" = "Bu kısayol zaten '%1$@' eylemi tarafından kullanılıyor.";
-"shortcutActionOpenBundle" = ".app Paketi Seç";
+"shortcutActionOpenBundle" = "Dosya veya Paket Seç";
 "shortcutActionRefresh" = "Analizi Yenile";
 "shortcutActionReveal" = "Paketi Finder'da Göster";
 "shortcutActionCopyReport" = "Raporu Kopyala (Markdown)";
@@ -190,7 +190,7 @@
 "buttonShowInFinder" = "Finder'da Göster";
 "settingsAISection" = "Yapay Zekâ";
 "settingsAISuggestions" = "Yapay zekâ adli yorumu (yalnızca bu Mac'te)";
-"settingsAISuggestionsNote" = "İncelenen .app paketinin adli bulgularını özetlemek ve yorumlamak için seçilen model bu Mac'te kullanılır: Apple Intelligence ya da yerel bir Ollama veya LM Studio sunucusu. Paket verileri Mac'ten çıkmaz ve deterministik adli karar (CLEAN / WARNING / TAMPERED) değiştirilmez.";
+"settingsAISuggestionsNote" = "İncelenen hedefin adli bulgularını özetlemek ve yorumlamak için seçilen model bu Mac'te kullanılır: Apple Intelligence ya da yerel bir Ollama veya LM Studio sunucusu. Veriler Mac'ten çıkmaz ve deterministik adli karar (CLEAN / WARNING / TAMPERED) değiştirilmez.";
 "settingsAIProvider" = "Model kaynağı";
 "settingsAIModel" = "Yerel model";
 "settingsAIRefresh" = "Yenile";

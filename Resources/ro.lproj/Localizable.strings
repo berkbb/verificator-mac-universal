@@ -1,10 +1,10 @@
 "appName" = "Verificator";
 "appTitle" = "Verificator — Inspector Criminalistic Universal pentru Pachete macOS";
-"appSubtitle" = "Analiză Doar-Citire Mach-O, Semnătură Digitală și Injecție Dylib pentru Orice Pachet .app";
+"appSubtitle" = "Analiză Criminalistică Doar-Citire pentru Aplicații, .dmg, .pkg și Mach-O";
 "appTagline" = "Auditor criminalistic doar-citire pentru Mach-O, semnături digitale și injecții dylib.";
-"actionSelectApp" = "Selectează Pachetul .app…";
+"actionSelectApp" = "Selectează Fișier sau Pachet…";
 "actionRefresh" = "Reîmprospătează";
-"actionRefreshHelp" = "Rescanează pachetul .app deschis în prezent (⌘R)";
+"actionRefreshHelp" = "Rescanează ținta deschisă în prezent (⌘R)";
 "actionClear" = "Curăță";
 "actionClearHelp" = "Curăță raportul de analiză curent și ecranul (⇧⌘W)";
 "actionBackHome" = "Înapoi la Ecranul Principal";
@@ -21,10 +21,10 @@
 "sidebarHome" = "Acasă";
 "sidebarNoRecents" = "Niciun pachet recent";
 "sidebarRemoveRecent" = "Elimină din Listă";
-"statusIdle" = "Trageți și plasați în această zonă pachetul .app pe care doriți să îl analizați";
-"statusIdleHint" = "Puteți plasa orice aplicație macOS (.app) direct din Finder sau din dosarul Applications peste această fereastră.";
-"statusDropActive" = "Plasați Pachetul Aplicației pentru a Începe Analiza Criminalistică (.app)";
-"statusDropBar" = "Trageți și plasați un alt pachet .app oriunde pe fereastră pentru analiză";
+"statusIdle" = "Plasați aici o aplicație, un pachet, o imagine disc sau un binar pentru audit";
+"statusIdleHint" = "Puteți trage și plasa din Finder sau Applications orice aplicație .app, imagine .dmg, pachet .pkg, framework, .dylib sau dosar direct peste această fereastră.";
+"statusDropActive" = "Plasați Elementul pentru a Începe Analiza Criminalistică";
+"statusDropBar" = "Trageți și plasați o altă aplicație, .dmg, .pkg sau un binar oriunde pe fereastră pentru analiză";
 "statusScanning" = "Se execută inspecția criminalistică…";
 "verdictClean" = "VERIFICAT (Aplicație Originală / Nemodificată)";
 "verdictWarning" = "COMPILARE LOCALĂ / AVERTISMENT (Semnătură Ad-Hoc sau Notificare)";
@@ -92,7 +92,7 @@
 "restartMenuBarNotice" = "Bara de meniu și interfața sunt traduse dinamic. Se recomandă repornirea aplicației pentru a reîncărca și dialogurile la nivel de sistem.";
 "menuAbout" = "Despre Verificator";
 "menuCheckAppUpdates" = "Verifică Actualizările…";
-"menuOpenBundle" = "Deschide Pachetul .app…";
+"menuOpenBundle" = "Deschide Fișier sau Pachet…";
 "menuRefreshScan" = "Reîmprospătează Analiza";
 "menuRevealInFinder" = "Afișează Pachetul în Finder";
 "menuCopyReport" = "Copiază Raportul (Markdown)";
@@ -112,7 +112,7 @@
 "settingsDeepFrameworkCheck" = "Verifică semnăturile digitale individuale ale bibliotecilor incluse (Frameworks & MacOS)";
 "settingsDeepFrameworkCheckNote" = "Detectează eliminarea semnăturii între framework-urile producătorului original și executabilul principal, eliminând alarmele false.";
 "settingsExtractTargetStrings" = "Scanează fișierele .dylib injectate pentru șiruri de clase Swift/ObjC vizate";
-"settingsAutoScanOnDrop" = "Analizează imediat pachetele .app trase și plasate";
+"settingsAutoScanOnDrop" = "Analizează imediat aplicațiile, pachetele și binarele trase și plasate";
 "settingsRevealAfterExport" = "Afișează în Finder raportul Markdown exportat";
 "settingsRecentsSection" = "Pachete Analizate Recent";
 "settingsToolsSection" = "Starea Instrumentelor Criminalistice macOS";
@@ -142,7 +142,7 @@
 "shortcutResetAll" = "Resetează Toate Scurtăturile";
 "shortcutModifierRequired" = "Este necesară cel puțin o tastă modificatoare (⌘, ⌥ sau ⌃).";
 "shortcutConflictWarning" = "Această scurtătură este deja utilizată de '%1$@'.";
-"shortcutActionOpenBundle" = "Selectează Pachetul .app";
+"shortcutActionOpenBundle" = "Selectează Fișier sau Pachet";
 "shortcutActionRefresh" = "Reîmprospătează Analiza";
 "shortcutActionReveal" = "Afișează Pachetul în Finder";
 "shortcutActionCopyReport" = "Copiază Raportul (Markdown)";
@@ -190,7 +190,7 @@
 "buttonShowInFinder" = "Afișează în Finder";
 "settingsAISection" = "Inteligență Artificială";
 "settingsAISuggestions" = "Interpretare criminalistică AI (doar pe acest Mac)";
-"settingsAISuggestionsNote" = "Modelul ales rulează pe acest Mac pentru a rezuma și explica constatările criminalistice ale pachetului .app inspectat: Apple Intelligence sau un server local Ollama ori LM Studio. Datele pachetului nu părăsesc Mac-ul, iar verdictul determinist (CLEAN / WARNING / TAMPERED) nu este modificat.";
+"settingsAISuggestionsNote" = "Modelul ales rulează pe acest Mac pentru a rezuma și explica constatările criminalistice ale țintei inspectate: Apple Intelligence sau un server local Ollama ori LM Studio. Datele nu părăsesc Mac-ul, iar verdictul determinist (CLEAN / WARNING / TAMPERED) nu este modificat.";
 "settingsAIProvider" = "Sursa modelului";
 "settingsAIModel" = "Model local";
 "settingsAIRefresh" = "Reîmprospătează";

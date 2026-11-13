@@ -1,10 +1,10 @@
 "appName" = "Verificator";
 "appTitle" = "Verificator — Universal macOS Forensic Bundle Inspector";
-"appSubtitle" = "Read-Only Mach-O, Code Signature, and Dylib Injection Analysis for Any .app Bundle";
+"appSubtitle" = "Read-Only Forensic Analysis for Apps, .dmg, .pkg, and Mach-O";
 "appTagline" = "Read-only Mach-O, digital signature, and dylib injection forensic auditor.";
-"actionSelectApp" = "Select .app Bundle…";
+"actionSelectApp" = "Select File or Package…";
 "actionRefresh" = "Refresh";
-"actionRefreshHelp" = "Re-scan the currently open .app bundle (⌘R)";
+"actionRefreshHelp" = "Re-scan the currently open target (⌘R)";
 "actionClear" = "Clear";
 "actionClearHelp" = "Clear the current analysis report and screen (⇧⌘W)";
 "actionBackHome" = "Back to Home";
@@ -21,10 +21,10 @@
 "sidebarHome" = "Home";
 "sidebarNoRecents" = "No recent bundles";
 "sidebarRemoveRecent" = "Remove from List";
-"statusIdle" = "Drag and drop the .app bundle you want to analyze into this area";
-"statusIdleHint" = "You can drop any macOS application (.app) directly from Finder or Applications onto this window.";
-"statusDropActive" = "Drop Application Bundle to Start Forensic Analysis (.app)";
-"statusDropBar" = "Drag and drop another .app bundle anywhere on the window to analyze";
+"statusIdle" = "Drop an application, package, disk image, or binary here to audit";
+"statusIdleHint" = "Drag and drop any .app bundle, .dmg disk image, .pkg installer, framework, .dylib, or folder from Finder or Applications onto this window.";
+"statusDropActive" = "Drop Item to Start Forensic Analysis";
+"statusDropBar" = "Drag and drop another app, .dmg, .pkg, or binary anywhere on the window to analyze";
 "statusScanning" = "Running forensic inspection…";
 "verdictClean" = "VERIFIED (Original / Unmodified Application)";
 "verdictWarning" = "LOCAL BUILD / NOTICE (Ad-Hoc or Signature Notice)";
@@ -92,7 +92,7 @@
 "restartMenuBarNotice" = "Menubar and interface are dynamically translated. Restarting the application is recommended to also reload system-level dialogs.";
 "menuAbout" = "About Verificator";
 "menuCheckAppUpdates" = "Check for Updates…";
-"menuOpenBundle" = "Open .app Bundle…";
+"menuOpenBundle" = "Open File or Package…";
 "menuRefreshScan" = "Refresh Analysis";
 "menuRevealInFinder" = "Show Bundle in Finder";
 "menuCopyReport" = "Copy Report (Markdown)";
@@ -112,7 +112,7 @@
 "settingsDeepFrameworkCheck" = "Verify individual code signatures of bundled libraries (Frameworks & MacOS)";
 "settingsDeepFrameworkCheckNote" = "Detects signature stripping between original vendor frameworks and the main executable while eliminating false positives.";
 "settingsExtractTargetStrings" = "Scan injected .dylib files for targeted Swift/ObjC class strings";
-"settingsAutoScanOnDrop" = "Immediately analyze .app bundles when dragged and dropped";
+"settingsAutoScanOnDrop" = "Immediately analyze dropped apps, packages, and binaries";
 "settingsRevealAfterExport" = "Reveal exported Markdown report in Finder";
 "settingsRecentsSection" = "Recent Bundles";
 "settingsToolsSection" = "macOS Forensic Tools Status";
@@ -142,7 +142,7 @@
 "shortcutResetAll" = "Reset All Shortcuts";
 "shortcutModifierRequired" = "At least one modifier key (⌘, ⌥, or ⌃) is required.";
 "shortcutConflictWarning" = "This shortcut is already used by '%1$@'.";
-"shortcutActionOpenBundle" = "Select .app Bundle";
+"shortcutActionOpenBundle" = "Select File or Package";
 "shortcutActionRefresh" = "Refresh Analysis";
 "shortcutActionReveal" = "Show Bundle in Finder";
 "shortcutActionCopyReport" = "Copy Report (Markdown)";
@@ -190,7 +190,7 @@
 "buttonShowInFinder" = "Show in Finder";
 "settingsAISection" = "Artificial Intelligence";
 "settingsAISuggestions" = "AI forensic interpretation (on this Mac only)";
-"settingsAISuggestionsNote" = "The chosen model runs on this Mac to summarize and explain forensic findings for the inspected .app bundle: Apple Intelligence or a local Ollama or LM Studio server. Bundle data never leaves the Mac, and the deterministic verdict (CLEAN / WARNING / TAMPERED) is never altered.";
+"settingsAISuggestionsNote" = "The chosen model runs on this Mac to summarize and explain forensic findings for the inspected target: Apple Intelligence or a local Ollama or LM Studio server. Target data never leaves the Mac, and the deterministic verdict (CLEAN / WARNING / TAMPERED) is never altered.";
 "settingsAIProvider" = "Model source";
 "settingsAIModel" = "Local model";
 "settingsAIRefresh" = "Refresh";

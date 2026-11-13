@@ -276,9 +276,9 @@ public final class AppModel {
         }
     }
 
-    public func scan(_ url: URL, forceRescan: Bool = false) {
+    public func scan(_ url: URL, forceRescan: Bool = false, allowUnsupported: Bool = false) {
         let resolved = resolveAuditTargetURL(from: url).standardizedFileURL
-        guard ForensicScanner.isSupportedAuditURL(resolved) else {
+        guard allowUnsupported || ForensicScanner.isSupportedAuditURL(resolved) else {
             AppLog.shared.warning(.scanner, "Ignored unsupported item", detail: url.path)
             return
         }
@@ -886,12 +886,17 @@ public final class AppModel {
         if url.isFileURL {
             var isDir: ObjCBool = false
             let standardized = url.standardizedFileURL
-            if FileManager.default.fileExists(atPath: standardized.path, isDirectory: &isDir),
+            let ext = standardized.pathExtension.lowercased()
+            let exists = FileManager.default.fileExists(atPath: standardized.path, isDirectory: &isDir)
+            if exists,
                isDir.boolValue,
-               !ForensicScanner.supportedBundleExtensions.contains(standardized.pathExtension.lowercased()) {
+               !ForensicScanner.supportedBundleExtensions.contains(ext),
+               !ForensicScanner.supportedContainerExtensions.contains(ext) {
                 startBatchScan(in: standardized)
             } else if isSupportedBundleURL(standardized) {
                 scan(standardized)
+            } else if exists {
+                scan(standardized, allowUnsupported: true)
             }
             return
         }

@@ -1,20 +1,20 @@
 # Code-Graph Memory Wiki (`code_graph_wiki.md`)
 
-> Regenerated via `graphify` (`extract . --code-only` + `cluster-only . --no-label`) in `graphify-out/GRAPH_REPORT.md` (1,816 nodes · 4,018 edges · 65 communities · 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · 0 import cycles · 0 API tokens).
+> Regenerated via `graphify` (`extract . --code-only` + `cluster-only . --no-label`) in `graphify-out/GRAPH_REPORT.md` (1,807 nodes · 4,020 edges · 78 communities · 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · 0 import cycles · 0 API tokens).
 
 ## 1. Core God Nodes & High-Centrality Symbols
 
 | Rank | Symbol | Edges | Module / File | Role |
 | :--- | :--- | :--- | :--- | :--- |
-| 1 | `LKey` | 491 | `Sources/VerificatorCore/Localization.swift` | Trilingual (`tr`, `en`, `ro`) localization key enum |
-| 2 | `AppModel` | 112 | `Sources/VerificatorKit/AppModel.swift` | Main scan, batch, diff, running-process, persistence, signature-history, URL-scheme, update & quarantine orchestrator |
-| 3 | `AppSettings` | 73 | `Sources/VerificatorKit/AppSettings.swift` | Observable user settings, language, appearance, OCSP/scan options, shortcuts, recents |
-| 4 | `BundleAuditReport` | 55 | `Sources/VerificatorCore/ForensicModels.swift` | Immutable `Codable` forensic audit report (`AuditTargetKind`, `entitlementRisks`, `revocationStatus`, `executableSHA256`, `lcRpaths`, `rawEntitlementsOutput`) |
-| 5 | `ForensicScanner` | 45 | `Sources/VerificatorCore/ForensicScanner.swift` | 4-layer zero false-positive `.app`/`.pkg`/`.dmg`/`.framework`/Mach-O, codesign, spctl, revocation, lipo & dylib injection engine |
-| 6 | `CodingKeys` | 41 | `Sources/VerificatorCore/ForensicModels.swift` | Backward-compatible `Codable` mapping for pre-`1.3.0` and `1.3.0+` `BundleAuditReport` JSON schemas |
-| 7 | `AppLog` | 37 | `Sources/VerificatorCore/AppLog.swift` | Persistent TSV log writer (`~/Library/Logs/Verificator/Verificator.log`) |
-| 8 | `ScanCancellationToken` | 36 | `Sources/VerificatorCore/ForensicModels.swift` | Thread-safe process & cancellation token coordinating multi-worker audit cancellation |
-| 9 | `ContentView` | 36 | `Sources/VerificatorKit/Views/ContentView.swift` | Master-detail SwiftUI interface, single-target, batch, diff & system audit routing, search & raw output tabs |
+| 1 | `LKey` | 543 | `Sources/VerificatorCore/Localization.swift` | Trilingual (`tr`, `en`, `ro`) localization key enum |
+| 2 | `AppModel` | 120 | `Sources/VerificatorKit/AppModel.swift` | Main scan, batch, diff, running-process, persistence, signature-history, URL-scheme, update & quarantine orchestrator |
+| 3 | `AppSettings` | 74 | `Sources/VerificatorKit/AppSettings.swift` | Observable user settings, language, appearance, OCSP/scan options, shortcuts, recents |
+| 4 | `BundleAuditReport` | 63 | `Sources/VerificatorCore/ForensicModels.swift` | Immutable `Codable` forensic audit report (`AuditTargetKind`, `entitlementRisks`, `revocationStatus`, `executableSHA256`, `lcRpaths`, `rawEntitlementsOutput`) |
+| 5 | `ForensicScanner` | 48 | `Sources/VerificatorCore/ForensicScanner.swift` | 4-layer zero false-positive `.app`/`.pkg`/`.dmg`/`.framework`/Mach-O, codesign, spctl, revocation, lipo & dylib injection engine |
+| 6 | `CodingKeys` | 48 | `Sources/VerificatorCore/ForensicModels.swift` | Backward-compatible `Codable` mapping for pre-`1.3.0` and `1.3.0+` `BundleAuditReport` JSON schemas |
+| 7 | `ScanCancellationToken` | 39 | `Sources/VerificatorCore/ForensicModels.swift` | Thread-safe process & cancellation token coordinating multi-worker audit cancellation |
+| 8 | `ContentView` | 38 | `Sources/VerificatorKit/Views/ContentView.swift` | Master-detail SwiftUI interface, single-target, batch, diff & system audit routing, search & raw output tabs |
+| 9 | `AppLog` | 37 | `Sources/VerificatorCore/AppLog.swift` | Persistent TSV log writer (`~/Library/Logs/Verificator/Verificator.log`) |
 | 10 | `LocalModelServer` | 33 | `Sources/VerificatorCore/LocalModels.swift` | Local AI server descriptor (`ollama` `127.0.0.1:11434`, `lmStudio` `127.0.0.1:1234`) |
 
 ## 2. Module & Call Hierarchy
@@ -33,7 +33,7 @@
   - `AppInfo` (`fallbackVersion`, `fallbackBuild`, `Info.plist` resolution) → resolves version/build across bundled and standalone CLI runs.
   - `AppUpdateChecker`, `UpdateSignature`, `UpdateChecksums` → GitHub Releases check + verified `.dmg`/`.dmg.sig`/`SHA256SUMS.txt` download and Ed25519/SHA-256 verification.
 - **`VerificatorKit` & `Verificator` (`VerificatorMain` Launcher) + `VerificatorCLI` (`verificator-cli`):**
-  - `VerificatorApp` (`auditServiceItem`, `open urls` → `handleIncomingURL`, `ChildProcessGuard.install()`, `LaunchServicesRegistration.registerIfBuildChanged()`) → hosts `ContentView` (`WindowID.main`), `DiffView` (`⇧⌘D`), `SystemAuditView` (`RunningProcessesAuditView` `⌥⌘P`, `PersistenceAuditView` `⌥⌘T`), `AboutView` (`WindowID.about`), `LogView` (`WindowID.log`), and `SettingsView` (including `settingsCLISection` and `settingsPermissionsSection`), plus `AppCommands` menu bar commands (`⌘O`, `⌥⌘B` Batch, `⇧⌘D` Diff, `⌥⌘P` Processes, `⌥⌘T` Persistence, `⌘R` Refresh, `⇧⌘R` Reveal, `⇧⌘C` Copy, `⌘S` Save Markdown, `⌥⌘S` Save JSON, `⇧⌘W` Clear, `⌘K` Remove Quarantine, `⌥⌘L` Log) and `VerificatorIntents` (`AuditApplicationIntent`, `VerificatorShortcutsProvider`).
+  - `VerificatorApp` (`auditServiceItem`, `AppDelegate.extractServiceTargetURLs(from:)`, `applicationWillFinishLaunching`, `open urls` → `handleIncomingURL`, `ChildProcessGuard.install()`, `LaunchServicesRegistration.registerIfBuildChanged()`) → hosts `ContentView` (`WindowID.main`), `DiffView` (`⇧⌘D`), `SystemAuditView` (`RunningProcessesAuditView` `⌥⌘P`, `PersistenceAuditView` `⌥⌘T`), `AboutView` (`WindowID.about`), `LogView` (`WindowID.log`), and `SettingsView` (including `settingsCLISection` and `settingsPermissionsSection`), plus `AppCommands` menu bar commands (`⌘O`, `⌥⌘B` Batch, `⇧⌘D` Diff, `⌥⌘P` Processes, `⌥⌘T` Persistence, `⌘R` Refresh, `⇧⌘R` Reveal, `⇧⌘C` Copy, `⌘S` Save Markdown, `⌥⌘S` Save JSON, `⇧⌘W` Clear, `⌘K` Remove Quarantine, `⌥⌘L` Log) and `VerificatorIntents` (`AuditApplicationIntent`, `VerificatorShortcutsProvider`).
 - **Sibling Security, Integrity & Privacy Modules (`VerificatorCore` & `VerificatorKit`):**
   - `OpenSafety` (`hasDeceptiveCharacters`, `visibleName` `⟦U+XXXX⟧`, `collectDeceptiveNames`) → wired into `ForensicScanner.collectCrossTargetForensics`, `SystemAudit` (`auditLaunchPlist`, `auditPrivilegedHelper`, `auditRunningProcesses`), `BundleAuditReport.deceptiveNames`, and UI views.
   - `ApplicationFirewall` (`FirewallStatus`, `FirewallAppRuleStatus`, `FirewallAppState`) → read-only `/usr/libexec/ApplicationFirewall/socketfilterfw` inspection integrated into `ForensicScanner`, `AppModel.firewallStatus`, `SettingsView`, `ContentView`, and CLI (`--no-firewall`).
