@@ -1,0 +1,11 @@
+/* Verificator — Internet Access Policy (en) */
+
+"IAPApplicationDescription" = "Verificator is a read-only 4-layer macOS application bundle, Mach-O binary, installer package, and disk image forensic auditor. Core audits run 100% locally offline.";
+"IAPUpdatePurpose" = "When you check for updates (or opt in at launch), Verificator queries GitHub Releases to check for new versions and downloads SHA-256 + Ed25519 verified release archives.";
+"IAPUpdateDeny" = "If denied, Verificator will not be able to notify you about or download application updates.";
+"IAPRevocationPurpose" = "Only when you opt in to OCSP certificate revocation checks (--revocation or Settings), macOS Security checks signing certificates and notarization tickets with Apple OCSP responders.";
+"IAPRevocationDeny" = "If denied, online OCSP revocation checks will be unavailable; offline signature, dylib, and Mach-O inspections continue to work.";
+"IAPLocalAIPurpose" = "When local Ollama or LM Studio AI explanations are enabled, Verificator communicates strictly over loopback (127.0.0.1) on this Mac without sending data to the internet.";
+"IAPLocalAIDeny" = "If loopback access is blocked, local Ollama/LM Studio summaries remain unavailable while Apple Intelligence and deterministic forensics continue offline.";
+"IAPServiceSecurityName" = "macOS Security & Gatekeeper";
+"IAPServiceSecurityPurpose" = "Optional Gatekeeper policy checks (spctl) and on-demand OCSP trust evaluations performed via macOS Security frameworks.";

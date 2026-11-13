@@ -2,7 +2,7 @@
 
 ![Swift](https://img.shields.io/badge/Swift-F05138?logo=swift&logoColor=white) ![macOS 26+](https://img.shields.io/badge/macOS-26%2B-000000?logo=apple&logoColor=white) ![Universal](https://img.shields.io/badge/arch-arm64%20%2B%20x86__64-blue)
 
-A native macOS 26+ forensic application bundle (`.app`) inspector, built with SwiftUI and Liquid Glass as a universal app (Apple Silicon `arm64` + Intel `x86_64`). It performs read-only 4-layer Mach-O, code signature, and dylib injection analysis with **0% false positives** on legitimate Apple, App Store, Developer ID, and local developer builds.
+A native macOS 26+ forensic security inspector, built with SwiftUI and Liquid Glass as a universal app (Apple Silicon `arm64` + Intel `x86_64`). It performs read-only 4-layer Mach-O, code signature, installer/disk image, running process, persistence, and dylib injection analysis with **0% false positives** on legitimate Apple, App Store, Developer ID, and local developer builds.
 
 <p align="center">
   <img src="docs/screenshots/welcome-dark.png" width="850" alt="Verificator welcome screen in dark mode, showing the master-detail sidebar, bundle selection controls, and the forensic drop zone">
@@ -11,10 +11,20 @@ A native macOS 26+ forensic application bundle (`.app`) inspector, built with Sw
 ## Features
 
 - **4-Layer Zero False-Positive Forensic Engine (`ForensicScanner`)**
-  - **Layer 1 — Code Signature & Authority Chain:** runs `codesign -dvvv` and `codesign --verify --no-strict` to inspect `TeamIdentifier`, certificate authority chains (`Apple Root CA`, `Developer ID Application`), Hardened Runtime flags, Notarization tickets, `CDHash`, and unofficial self-signed crack certificates (such as `TEAM EDiSO`).
-  - **Layer 2 — Signature Hijacking Detection:** compares the signing provenance of frameworks inside `Contents/Frameworks` and `Contents/MacOS` against the main executable to detect bundles whose vendor signature was stripped and replaced after injecting a third-party dylib.
-  - **Layer 3 — Mach-O Load Command Audit (`otool -L`):** inspects `LC_LOAD_DYLIB` and `LC_LOAD_WEAK_DYLIB` links on the main executable without false-flagging legitimate CMake, Electron, or SwiftPM libraries.
+  - **Layer 1 — Code Signature, Entitlements & Authority Chain:** runs `codesign -dvvv`, `codesign -d --entitlements`, `lipo -archs`, and `codesign --verify --no-strict` plus single-pass streaming SHA-256 & SHA-512 hashing (`executableSHA256`, `executableSHA512`) to inspect Mach-O architectures, XML entitlements (highlighted with informational `EntitlementAnalyzer` risk badges without affecting the verdict), `Identifier`, `TeamIdentifier`, certificate authority chains (`Apple Root CA`, `Developer ID Application`), Hardened Runtime flags, Notarization tickets, `CDHash`, and unofficial self-signed crack certificates (such as `TEAM EDiSO`). Supports interactive & CLI expected checksum verification (`ExpectedChecksum`, `--expected-checksum` accepting raw hex, GNU, BSD, or `SHA256SUMS` manifests while rejecting MD5/SHA-1), optional Gatekeeper policy verification (`/usr/sbin/spctl --assess`), opt-in OCSP revocation checks (`RevocationChecker`, `--revocation`), and local signature/`CDHash` baseline tracking (`SignatureTracker`) across re-audits.
+  - **Layer 2 — Signature Hijacking Detection:** compares the signing provenance of frameworks, nested libraries, app extensions, XPC services, and Mach-O helpers inside `Contents/Frameworks` (including `.framework/Libraries/*.dylib`), `Contents/MacOS`, `Contents/PlugIns` (`.appex`), `Contents/XPCServices` (`.xpc`), `Contents/Helpers`, `Contents/Library/LoginItems`, and `WrappedBundle` iOS containers against the main executable to detect bundles whose vendor signature was stripped and replaced after injecting a third-party dylib.
+  - **Layer 3 — Mach-O Load Command Audit (`otool -L` / `otool -l`):** parses and exposes `LC_RPATH`, `LC_LOAD_DYLIB`, and `LC_LOAD_WEAK_DYLIB` links on the main executable without false-flagging legitimate CMake, Electron, or SwiftPM libraries.
   - **Layer 4 — Runtime Hook & Memory Patch Symbol Categorization (`nm -u`, `strings`):** categorizes imported hook symbols into Objective-C method swizzling (`_method_exchangeImplementations`, `_class_replaceMethod`), Mach VM patching (`_mach_vm_protect`, `_mach_vm_write`, `_mach_vm_remap`), and DYLD ASLR slide inspection (`__dyld_get_image_vmaddr_slide`).
+- **Expanded Target Support (`AuditTargetKind`):**
+  - Audit `.app` bundles, `.pkg` / `.mpkg` installer packages (`pkgutil --check-signature`), `.dmg` disk images, `.framework` / `.bundle` / `.appex` / `.xpc` / `.kext` / `.plugin` bundles, and standalone `.dylib` / `.so` / Mach-O executables via drag-and-drop, open panel, Finder Services, `verificator://` URLs, or CLI.
+- **Report & Bundle Diff Mode (`⇧⌘D`):**
+  - Compare any two targets or exported `.json` forensic reports side by side (`AuditDiff` / `DiffView`) to inspect verdict shifts, signer/entitlement changes, added/removed findings, and newly introduced dylibs or hook symbols, with one-click Markdown export.
+- **Running Processes (`⌥⌘P`) & System Persistence (`⌥⌘T`) Audit:**
+  - Inspect active macOS processes (`SystemAudit.auditRunningProcesses` & `LiveProcessInspector` via `proc_listallpids`, `proc_pidpath`, `PROC_PIDTBSDINFO` parent process info, `PROC_PIDREGIONPATHINFO` mapped Mach-O libraries, dynamic `SecCode` vs static signature comparison, and `KERN_PROCARGS2` for `DYLD_*` variables) and LaunchAgents, LaunchDaemons, and PrivilegedHelperTools (`SystemAudit.auditPersistence` with `FullDiskAccess` status indicator), then open any flagged target directly in the forensic inspector.
+- **Parallel Batch Folder Audit (`⌥⌘B`), CLI (`verificator-cli`) & macOS Integration:**
+  - Scan an entire folder (such as `/Applications`) concurrently from the **Batch Audit** view or drop a folder onto the window (with live **Dock** tile progress overlay via `DockProgress`) to inspect verdicts and quarantine states in a searchable, filterable summary table with live Stop support, row context menus (including **Remove Quarantine**), and Markdown/JSON export.
+  - Run headless single-target, `--batch`, `--diff <old> <new>`, `--running`, or `--persistence` audits in CI/scripts with `verificator-cli` (bundled at `Contents/MacOS/verificator-cli`, with a copyable install command in **Settings**), supporting `--lang tr|en|ro`, `--json`, `--redact`, `--spctl`, `--revocation`, `--expected-checksum <value|file>`, `--no-firewall`, `--no-deep`, and `--no-strings`.
+  - Integrate with **Finder › Services** (`NSServices`, localized `ServicesMenu.strings`), custom `verificator://` deep links, **Shortcuts / Spotlight** (`AuditApplicationIntent`, localized `AppShortcuts.strings`), global `GatekeeperStatus` and read-only Application Firewall (`ApplicationFirewall` / `socketfilterfw`) alerts, unencrypted removable-media checks (`VolumeEncryptionInfo`), deceptive Unicode / RTLO filename alerts (`OpenSafety`), Little Snitch-compatible `InternetAccessPolicy.plist` inspection (plus Verificator's own bundled trilingual `InternetAccessPolicy`), per-export salted PII masking (`DiagnosticMasker`), and signal-safe child process protection (`ChildProcessGuard`).
 - **On-Device & Local AI Forensic Assessment (`ForensicAI`)**
   - Summarizes and interprets forensic findings in the selected language without altering the deterministic verdict (`CLEAN`, `WARNING`, `TAMPERED`).
   - Supports **Apple Intelligence** (first and default provider on macOS 26+ via `FoundationModels`), local **Ollama** (`127.0.0.1:11434`), local **LM Studio** (`127.0.0.1:1234`), and **Automatic (in order)** fallback.
@@ -23,13 +33,13 @@ A native macOS 26+ forensic application bundle (`.app`) inspector, built with Sw
   - Dynamically displays a prominent **Remove Quarantine** button when `com.apple.quarantine` is present on the bundle or its executable.
   - Uses macOS administrator authentication (`Touch ID` / password prompt) to safely clear quarantine flags and immediately re-audits the bundle.
 - **Master–Detail Interface (`NavigationSplitView`)**
-  - Sidebar with forensic inspection sections (**Home**, **Overview & Signature** `⌘1`, **Mach-O & Dylib Analysis** `⌘2`, **Memory & Hook Symbols** `⌘3`, **Raw Forensic Output** `⌘4`) and **Recent Bundles** with live app icons, verdict indicators, and context menus.
-  - Prominent **Refresh (`⌘R`)** and **Clear (`⇧⌘W`)** buttons in the header bar, verdict banner, and menu bar.
-  - One-click Markdown report copy (`⇧⌘C`) and `.md` file export (`⌘S`).
+  - Sidebar with forensic inspection sections (**Home**, **Overview & Signature** `⌘1`, **Mach-O & Dylib Analysis** `⌘2`, **Memory & Hook Symbols** `⌘3`, **Raw Forensic Output** `⌘4`, **Report & Bundle Diff** `⇧⌘D`, **Running Processes** `⌥⌘P`, **Launch & Persistence** `⌥⌘T`) and **Recent Bundles** with live app icons, verdict indicators, and context menus.
+  - Prominent **Refresh (`⌘R`)**, **Cancel**, and **Clear (`⇧⌘W`)** buttons, searchable/filterable dylib tables (`All`, `Non-System`, `Suspicious`), and per-section Copy buttons.
+  - One-click Markdown report copy (`⇧⌘C`), Markdown file export (`⌘S`), and structured JSON export (`⌥⌘S`).
 - **Languages:** Turkish (default), English, Romanian (1:1 key parity across dedicated `.lproj` files)
 - **Appearance:** System, Light, Dark
 - **Windows:** Main Window, 4-tab Settings (`⌘,`), About with read-only License Viewer, and a Console-style Log window (`⌥⌘L`) backed by `~/Library/Logs/Verificator/Verificator.log`
-- **Updates:** checks GitHub Releases (`AppUpdateChecker`) and supports Ed25519 signature (`UpdateSignature`) and SHA-256 checksum (`UpdateChecksums`) verification.
+- **Updates:** checks GitHub Releases (`AppUpdateChecker`) and performs in-app downloads with automatic SHA-256 checksum (`UpdateChecksums`) and Ed25519 signature (`UpdateSignature`) verification.
 
 ## Installation
 
@@ -64,7 +74,7 @@ The same tasks from the terminal:
 ```bash
 ./Scripts/package.sh                  # tests + universal .app + .dmg + .dmg.sig + SHA256SUMS.txt
 ./Scripts/build_app.sh                # build/Verificator.app only
-./Scripts/set-version.sh 1.1.1        # bump version (single source: Support/Info.plist)
+./Scripts/set-version.sh 1.2.1        # bump version (Support/Info.plist + AppInfo fallback)
 ./Scripts/release.sh --dry-run        # rehearse a release without sending anything
 ./Scripts/release.sh                  # package, tag and upload to GitHub Releases
 swift test                            # run all unit, localization & forensic calibration tests

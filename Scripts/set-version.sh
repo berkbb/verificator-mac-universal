@@ -17,5 +17,12 @@ NEW_BUILD=$((OLD_BUILD + 1))
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$PLIST"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $NEW_BUILD" "$PLIST"
+
+APP_INFO="$ROOT/Sources/VerificatorCore/AppInfo.swift"
+if [ -f "$APP_INFO" ]; then
+  /usr/bin/sed -i '' -E "s/public static let fallbackVersion = \"[^\"]*\"/public static let fallbackVersion = \"$VERSION\"/" "$APP_INFO"
+  /usr/bin/sed -i '' -E "s/public static let fallbackBuild = \"[^\"]*\"/public static let fallbackBuild = \"$NEW_BUILD\"/" "$APP_INFO"
+fi
+
 echo "Sürüm: $OLD_VERSION ($OLD_BUILD) → $VERSION ($NEW_BUILD)"
 echo "CHANGELOG.md içinde '## [$VERSION]' başlığını eklemeyi unutmayın."

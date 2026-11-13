@@ -155,8 +155,11 @@ public final class AppSettings {
         static let appearance = "appearance"
         static let deepFrameworkSignatureCheck = "deepFrameworkSignatureCheck"
         static let extractTargetStrings = "extractTargetStrings"
+        static let includeGatekeeperAssessment = "includeGatekeeperAssessment"
+        static let checkCertificateRevocation = "checkCertificateRevocation"
         static let autoScanOnDrop = "autoScanOnDrop"
         static let revealAfterExport = "revealAfterExport"
+        static let redactSharedDiagnostics = "redactSharedDiagnostics"
         static let recentBundles = "recentBundles"
         static let recentVerdicts = "recentVerdicts"
         static let checkUpdatesAtLaunch = "checkUpdatesAtLaunch"
@@ -170,9 +173,11 @@ public final class AppSettings {
         static let aiAutomaticOff = "aiAutomaticOff"
         static let all = [
             language, appearance, deepFrameworkSignatureCheck, extractTargetStrings,
-            autoScanOnDrop, revealAfterExport, recentBundles, recentVerdicts, checkUpdatesAtLaunch,
-            updateConsentAsked, customShortcuts, aiSuggestions, aiProvider, aiOllamaModel,
-            aiLMStudioModel, aiAutomaticOrder, aiAutomaticOff,
+            includeGatekeeperAssessment, checkCertificateRevocation, autoScanOnDrop, revealAfterExport,
+            redactSharedDiagnostics, recentBundles,
+            recentVerdicts, checkUpdatesAtLaunch, updateConsentAsked, customShortcuts,
+            aiSuggestions, aiProvider, aiOllamaModel, aiLMStudioModel,
+            aiAutomaticOrder, aiAutomaticOff,
         ]
     }
 
@@ -197,11 +202,20 @@ public final class AppSettings {
     public var extractTargetStrings: Bool {
         didSet { defaults.set(extractTargetStrings, forKey: Key.extractTargetStrings) }
     }
+    public var includeGatekeeperAssessment: Bool {
+        didSet { defaults.set(includeGatekeeperAssessment, forKey: Key.includeGatekeeperAssessment) }
+    }
+    public var checkCertificateRevocation: Bool {
+        didSet { defaults.set(checkCertificateRevocation, forKey: Key.checkCertificateRevocation) }
+    }
     public var autoScanOnDrop: Bool {
         didSet { defaults.set(autoScanOnDrop, forKey: Key.autoScanOnDrop) }
     }
     public var revealAfterExport: Bool {
         didSet { defaults.set(revealAfterExport, forKey: Key.revealAfterExport) }
+    }
+    public var redactSharedDiagnostics: Bool {
+        didSet { defaults.set(redactSharedDiagnostics, forKey: Key.redactSharedDiagnostics) }
     }
     public var recentBundles: [String] {
         didSet { defaults.set(recentBundles, forKey: Key.recentBundles) }
@@ -264,8 +278,11 @@ public final class AppSettings {
         appearance = AppAppearance(rawValue: defaults.string(forKey: Key.appearance) ?? "") ?? .system
         deepFrameworkSignatureCheck = defaults.object(forKey: Key.deepFrameworkSignatureCheck) as? Bool ?? true
         extractTargetStrings = defaults.object(forKey: Key.extractTargetStrings) as? Bool ?? true
+        includeGatekeeperAssessment = defaults.object(forKey: Key.includeGatekeeperAssessment) as? Bool ?? false
+        checkCertificateRevocation = defaults.object(forKey: Key.checkCertificateRevocation) as? Bool ?? false
         autoScanOnDrop = defaults.object(forKey: Key.autoScanOnDrop) as? Bool ?? true
         revealAfterExport = defaults.object(forKey: Key.revealAfterExport) as? Bool ?? true
+        redactSharedDiagnostics = defaults.object(forKey: Key.redactSharedDiagnostics) as? Bool ?? false
         recentBundles = defaults.stringArray(forKey: Key.recentBundles) ?? []
         recentVerdicts = (defaults.dictionary(forKey: Key.recentVerdicts) as? [String: String]) ?? [:]
         checkUpdatesAtLaunch = defaults.object(forKey: Key.checkUpdatesAtLaunch) as? Bool ?? false
@@ -287,7 +304,11 @@ public final class AppSettings {
     public var scanOptions: ScanOptions {
         ScanOptions(
             deepFrameworkSignatureCheck: deepFrameworkSignatureCheck,
-            extractTargetStrings: extractTargetStrings
+            extractTargetStrings: extractTargetStrings,
+            includeGatekeeperAssessment: includeGatekeeperAssessment,
+            checkCertificateRevocation: checkCertificateRevocation,
+            checkApplicationFirewall: true,
+            policyLanguages: [languageCode, "en"]
         )
     }
 
@@ -332,6 +353,8 @@ public final class AppSettings {
         appearance = .system
         deepFrameworkSignatureCheck = true
         extractTargetStrings = true
+        includeGatekeeperAssessment = false
+        checkCertificateRevocation = false
         autoScanOnDrop = true
         revealAfterExport = true
         recentBundles = []
@@ -369,6 +392,35 @@ public final class AppSettings {
 
     public func resetAllShortcuts() {
         customShortcuts = [:]
+    }
+
+    public enum ShortcutConflict: Equatable, Sendable {
+        case customAction(ShortcutAction)
+        case systemShortcut(LKey)
+    }
+
+    public static let reservedSystemShortcuts: [(titleKey: LKey, shortcut: KeyboardShortcutData)] = [
+        (.tabOverview, KeyboardShortcutData(key: "1", command: true)),
+        (.tabDylibs, KeyboardShortcutData(key: "2", command: true)),
+        (.tabSymbols, KeyboardShortcutData(key: "3", command: true)),
+        (.tabRaw, KeyboardShortcutData(key: "4", command: true)),
+        (.actionRemoveQuarantine, KeyboardShortcutData(key: "K", command: true)),
+        (.menuShowLog, KeyboardShortcutData(key: "L", command: true, option: true)),
+        (.menuBatchScan, KeyboardShortcutData(key: "B", command: true, option: true)),
+        (.menuSaveJSONReport, KeyboardShortcutData(key: "S", command: true, option: true)),
+        (.menuCompareMode, KeyboardShortcutData(key: "D", command: true, shift: true)),
+        (.menuRunningProcesses, KeyboardShortcutData(key: "P", command: true, option: true)),
+        (.menuPersistenceAudit, KeyboardShortcutData(key: "T", command: true, option: true)),
+    ]
+
+    public func shortcutConflict(for candidate: KeyboardShortcutData, editingAction: ShortcutAction) -> ShortcutConflict? {
+        if let action = ShortcutAction.allCases.first(where: { $0 != editingAction && shortcut(for: $0) == candidate }) {
+            return .customAction(action)
+        }
+        if let reserved = Self.reservedSystemShortcuts.first(where: { $0.shortcut == candidate }) {
+            return .systemShortcut(reserved.titleKey)
+        }
+        return nil
     }
 
     public var isAllShortcutsDefault: Bool {

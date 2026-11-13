@@ -36,7 +36,7 @@
 
 ## 4. Quarantine Invariant & Administrator Elevation Boundary
 
-1. **Detection:** All audited bundles are inspected for `com.apple.quarantine` extended attributes using `getxattr` and `xattr -p`.
+1. **Detection:** All audited bundles are inspected for *active*, unapproved `com.apple.quarantine` state on the bundle root and main executable using `URLResourceKey.quarantinePropertiesKey` (uncached, including resolved symlinks) with raw `getxattr`/`xattr -p` flag parsing fallback that excludes user-approved (`0x0040`, `QTN_FLAG_USER_APPROVED`) and cleared (`0x4000`, `0x8000`) flags.
 2. **Dynamic UI Action:** When `report.isQuarantined == true`, an explicit **Remove Quarantine** action (`⌘K`) is exposed in the verdict banner.
 3. **Privileged Execution:** Stripping quarantine invokes `/usr/bin/osascript ... with administrator privileges` to run `/usr/bin/xattr -rd com.apple.quarantine <bundlePath>`. This prompts native macOS Touch ID or admin password elevation and automatically re-audits the bundle upon completion.
 4. **Gatekeeper First-Launch Invariant:** Verificator is ad-hoc signed and not notarized. First-launch quarantine warnings must be clearly documented across `README.md` and `CHANGELOG.md` with GUI (right-click Open) and CLI (`xattr -dr com.apple.quarantine /Applications/Verificator.app`) workarounds.

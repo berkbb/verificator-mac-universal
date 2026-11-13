@@ -3,13 +3,14 @@ import AppKit
 import VerificatorCore
 import SwiftUI
 
-@main
-struct VerificatorApp: App {
+public struct VerificatorApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var settings = AppSettings.shared
     @State private var model = AppModel.shared
 
-    var body: some Scene {
+    public init() {}
+
+    public var body: some Scene {
         let _ = settings.customShortcuts
         Window(settings.t(.appName), id: WindowID.main) {
             ContentView()
@@ -57,12 +58,55 @@ struct VerificatorApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApplication.shared.setActivationPolicy(.regular)
+        NSApplication.shared.servicesProvider = self
+        NSUpdateDynamicServices()
+        ChildProcessGuard.install()
+        LaunchServicesRegistration.registerIfBuildChanged()
         AppSettings.shared.applyAppearance()
     }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        AppModel.shared.refreshSystemSecurityStatus()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        ChildProcessGuard.terminateAll()
+    }
+
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let first = urls.first else { return }
-        AppModel.shared.scan(first)
+        for url in urls {
+            AppModel.shared.handleIncomingURL(url)
+        }
+    }
+
+    @objc func auditServiceItem(
+        _ pboard: NSPasteboard,
+        userData: String?,
+        error: AutoreleasingUnsafeMutablePointer<NSString?>
+    ) {
+        let urls = (pboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        var candidateURL = urls.first
+
+        if candidateURL == nil,
+           let paths = pboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType")) as? [String],
+           let first = paths.first, !first.isEmpty {
+            candidateURL = URL(fileURLWithPath: first)
+        }
+
+        if candidateURL == nil,
+           let rawText = pboard.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawText.isEmpty,
+           FileManager.default.fileExists(atPath: rawText) {
+            candidateURL = URL(fileURLWithPath: rawText)
+        }
+
+        guard let targetURL = candidateURL else {
+            error.pointee = AppSettings.shared.t(.serviceInvalidSelectionError) as NSString
+            return
+        }
+
+        NSApplication.shared.activate(ignoringOtherApps: true)
+        AppModel.shared.handleIncomingURL(targetURL)
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -90,6 +134,30 @@ struct AppCommands: Commands {
                 model.presentOpenPanel()
             }
             .keyboardShortcut(openShortcut.keyEquivalent, modifiers: openShortcut.eventModifiers)
+
+            Button(settings.t(.menuBatchScan)) {
+                openWindow(id: WindowID.main)
+                model.presentBatchFolderPanel()
+            }
+            .keyboardShortcut("b", modifiers: [.command, .option])
+
+            Button(settings.t(.menuCompareMode)) {
+                openWindow(id: WindowID.main)
+                model.openDiffMode()
+            }
+            .keyboardShortcut("d", modifiers: [.command, .shift])
+
+            Button(settings.t(.menuRunningProcesses)) {
+                openWindow(id: WindowID.main)
+                model.openRunningProcessesMode(startImmediately: true)
+            }
+            .keyboardShortcut("p", modifiers: [.command, .option])
+
+            Button(settings.t(.menuPersistenceAudit)) {
+                openWindow(id: WindowID.main)
+                model.openPersistenceMode(startImmediately: true)
+            }
+            .keyboardShortcut("t", modifiers: [.command, .option])
 
             let refreshShortcut = settings.shortcut(for: .refresh)
             Button(settings.t(.menuRefreshScan)) {
@@ -154,12 +222,24 @@ struct AppCommands: Commands {
             .keyboardShortcut(saveShortcut.keyEquivalent, modifiers: saveShortcut.eventModifiers)
             .disabled(model.report == nil)
 
+            Button(settings.t(.menuSaveJSONReport)) {
+                model.saveJSONReport()
+            }
+            .keyboardShortcut("s", modifiers: [.command, .option])
+            .disabled(model.report == nil)
+
             Divider()
 
             Button(settings.t(.actionClearRecents)) {
-                settings.clearRecents()
+                model.clearAllHistory()
             }
             .disabled(settings.recentBundles.isEmpty)
+
+            Divider()
+
+            Button(settings.t(.menuInstallCLI)) {
+                model.copyCLIInstallCommand()
+            }
         }
 
         CommandGroup(before: .toolbar) {

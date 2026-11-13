@@ -1,0 +1,11 @@
+/* Verificator — Internet Access Policy (tr) */
+
+"IAPApplicationDescription" = "Verificator; uygulama paketlerini, Mach-O ikililerini, yükleyicileri ve disk kalıplarını salt okunur 4 katmanlı olarak denetleyen bir macOS adli analiz aracıdır. Temel denetimler %100 çevrim dışı çalışır.";
+"IAPUpdatePurpose" = "Güncellemeleri denetlediğinizde (veya açılış denetimini açtığınızda), Verificator yeni sürümleri öğrenmek için GitHub Releases API'sine bağlanır ve SHA-256 + Ed25519 doğrulamalı arşivleri indirir.";
+"IAPUpdateDeny" = "Bu bağlantıyı reddederseniz Verificator uygulama güncellemelerini bildiremez veya indiremez.";
+"IAPRevocationPurpose" = "Yalnızca Ayarlar veya --revocation ile OCSP sertifika iptali denetimini açtığınızda, macOS Güvenlik çerçevesi imza sertifikalarının ve notarization biletlerinin durumunu Apple OCSP sunucularından doğrular.";
+"IAPRevocationDeny" = "Bu bağlantıyı reddederseniz çevrim içi OCSP iptal kontrolü çalışmaz; yerel imza, dylib ve Mach-O incelemeleri etkilenmez.";
+"IAPLocalAIPurpose" = "Yerel Ollama veya LM Studio yapay zekâ açıklamaları açık olduğunda, Verificator internete veri göndermeden yalnızca bu Mac'teki geri döngü arayüzüne (127.0.0.1) bağlanır.";
+"IAPLocalAIDeny" = "Geri döngü erişimi engellenirse Ollama/LM Studio özetleri kullanılamaz; Apple Intelligence ve deterministik adli analiz çevrim dışı çalışmayı sürdürür.";
+"IAPServiceSecurityName" = "macOS Güvenlik ve Gatekeeper";
+"IAPServiceSecurityPurpose" = "macOS Security çerçeveleri aracılığıyla isteğe bağlı Gatekeeper politika değerlendirmeleri (spctl) ve OCSP güven doğrulamaları yapılır.";

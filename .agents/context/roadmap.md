@@ -29,3 +29,41 @@
   - [x] Real-time detection of `com.apple.quarantine` on bundles and Mach-O executables.
   - [x] Touch ID / administrator authentication prompt to remove quarantine (`sudo xattr -rd com.apple.quarantine`) with auto-rescan.
   - [x] Gatekeeper first-launch warning and terminal unquarantine instructions documented in README and changelog.
+
+## Completed Milestones (v1.3.0 — 2026-11-13)
+
+- [x] **Report & Bundle Diff Mode (`AuditDiff`, `DiffView`, `--diff`)**:
+  - [x] Side-by-side baseline comparison (`AuditDiff.compare` / `AuditDiff.loadOrAudit`) supporting `.app`, `.pkg`/`.mpkg`, `.dmg`, `.framework`, Mach-O binaries, and saved `.json` audit reports.
+  - [x] Interactive `DiffView` (`⇧⌘D`) with verdict/metadata/finding/dylib/hook/entitlement deltas and Markdown diff export, plus headless `verificator-cli --diff <old> <new>`.
+- [x] **Expanded Target Support (`AuditTargetKind` & `ForensicScanner.auditTarget`)**:
+  - [x] `.pkg`/`.mpkg` installer signature checks (`pkgutil --check-signature`), `.dmg` disk image inspection, `.framework`/`.bundle`/`.appex`/`.xpc`/`.kext`/`.plugin` bundles, and standalone `.dylib`/`.so`/Mach-O executables.
+  - [x] Backward-compatible `BundleAuditReport` JSON decoding for pre-`1.3.0` reports (`targetKind` defaults to `.appBundle`) and dyld-shared-cache ambiguity guard (0% FP on `/System/Library/Frameworks/AppKit.framework`).
+- [x] **Informational Entitlement Risk Badges (`EntitlementAnalyzer`)**:
+  - [x] Classify sensitive entitlements (`allow-jit`, disabled library validation, `DYLD_*` env flags, privacy/TCC capabilities, explicit `com.apple.security.app-sandbox = false`) in UI, exports, CLI, and `ForensicAI` prompts without mutating `IntegrityVerdict`.
+- [x] **Running Processes & System Persistence Audit (`SystemAudit`, `SystemAuditView`)**:
+  - [x] Darwin `proc_listallpids`/`proc_pidpath`/`sysctl(KERN_PROCARGS2)` running process & `DYLD_*` inspector (`⌥⌘P`, `--running`) with `PROC_PIDTBSDINFO` parent process lookup, `PROC_PIDREGIONPATHINFO` mapped Mach-O validation, and dynamic `SecCode` vs static `SecStaticCode` verification (`LiveProcessInspector`).
+  - [x] LaunchAgents/Daemons/PrivilegedHelperTools persistence scanner (`⌥⌘T`, `--persistence`) with `FullDiskAccess` status check & Settings button.
+- [x] **Sibling Security, Revocation, Signature Tracking & Automated Guard Tests**:
+  - [x] Opt-in OCSP revocation check (`RevocationChecker`, `--revocation`), persistent `SignatureTracker` / `SignatureTrackerStore` (`signature-history.json`, `0o600`, LRU `2,000`), global `GatekeeperStatus`, signal-safe `ChildProcessGuard`, and `LaunchServicesRegistration` (`LSRegisterURL`).
+  - [x] Localized `ServicesMenu.strings` & `AppShortcuts.strings` (`tr`/`en`/`ro`), `HardcodedTextGuardTests`, `AccessibilityLintTests`, `BundleVerificationTests`, and `SystemSecurityFeaturesTests`.
+- [x] **Sibling Security, Integrity & Privacy Additions**:
+  - [x] Unicode / RTLO filename spoof detection (`OpenSafety` `visibleName` `⟦U+XXXX⟧`) across bundles, nested components, processes, and persistence items.
+  - [x] Read-only macOS Application Firewall inspector (`ApplicationFirewall` / `socketfilterfw`, `--no-firewall`) and copyable `--unblockapp` command helper.
+  - [x] Single-pass streaming SHA-256 & SHA-512 expected checksum verifier (`ExpectedChecksum`, `ChecksumInput`, `--expected-checksum`) with GNU/BSD/`SHA256SUMS` manifest matching and weak-hash rejection.
+  - [x] Little Snitch `InternetAccessPolicy.plist` / `.strings` parser (nested depth < 4) plus Verificator's own bundled trilingual `Resources/InternetAccessPolicy.{plist,strings}`.
+  - [x] Per-export salted PII masker (`DiagnosticMasker`, `redactSharedDiagnostics`, CLI `--redact`), unencrypted removable-media detector (`VolumeEncryptionInfo`), Dock batch progress bar (`DockProgress`), and deterministic `SplitMix64` `FuzzTests`.
+- [x] **macOS System Integration**:
+  - [x] Finder `NSServices` (`auditServiceItem`), expanded `CFBundleDocumentTypes`, `verificator://` URL scheme (`CFBundleURLTypes`), Shortcuts/Spotlight `AppIntents` (`VerificatorIntents`), and copyable `verificator-cli` install helper in Settings & menu bar.
+
+## Completed Milestones (v1.2.0 — 2026-11-13)
+
+- [x] **Parallel Batch Folder Audit (`⌥⌘B`) & CLI Tool (`verificator-cli`)**:
+  - [x] `ForensicScanner.auditDirectory(..., maxConcurrentScans: 4)` & `BatchAuditSummary` (`wasCancelled`) with searchable GUI Batch View (progress, Stop, filters, row context actions, Markdown/JSON export) and headless CLI (`--batch`, `--lang tr|en|ro`, `--json`, `--spctl`) with standalone `Resources/` fallback discovery.
+- [x] **Deep Engine, Safety & Calibration Upgrades**:
+  - [x] Streaming `executableSHA256`, exposed `lcRpaths` (`otool -l`) & `rawEntitlementsOutput`, nested `.framework/Libraries/*.dylib`, `.appex`, `.xpc`, and Mach-O helper inspection (`BundledItemKind`), `.framework` Mach-O symbol checks, Mach-O architectures (`lipo -archs`), and entitlements XML inspection.
+  - [x] Optional/on-demand Gatekeeper policy assessment (`spctl --assess`) and calibrated `IntegrityVerdict.warning` rules.
+  - [x] Multi-process `ScanCancellationToken` + subprocess timeouts and stream byte caps (`runTool`), plus Touch ID/password cancel distinction (`QuarantineRemovalStatus`).
+- [x] **Cryptographically Verified In-App Updates**:
+  - [x] Connected `AppUpdateChecker.downloadAndVerify(release:)` to enforce `SHA256SUMS.txt` and Ed25519 `.dmg.sig` verification against `VerificatorUpdatePublicEDKey`, plus one-click **Open Downloaded Archive** and **Show in Finder** actions in Settings.
+- [x] **UI Search, Filtering, Copy, CI & `VerificatorKit` Test Coverage**:
+  - [x] Dylib & batch search, `All`/`Non-System`/`Suspicious` filter, expanded **Raw Forensic Output** (`LC_RPATH`, `Entitlements XML`, `Gatekeeper spctl`), section copy controls, AI Cancel/Copy controls, `⌥⌘S` JSON report export, built-in shortcut collision checks, `.github/workflows/ci.yml`, `set-version.sh` -> `AppInfo` sync, and `VerificatorKit` unit tests.

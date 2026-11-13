@@ -8,16 +8,28 @@ let package = Package(
     targets: [
         // Salt-okunur Mach-O, kod imzası ve dylib enjeksiyonu adli analiz çekirdeği, yerelleştirme, günlük ve güncelleme.
         .target(name: "VerificatorCore"),
-        // SwiftUI arayüzü.
-        .executableTarget(
-            name: "Verificator",
+        // Test edilebilir SwiftUI uygulama ve durum yönetimi katmanı.
+        .target(
+            name: "VerificatorKit",
             dependencies: ["VerificatorCore"],
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
-        // Çekirdek ve yerelleştirme doğrulama testleri.
+        // SwiftUI masaüstü uygulaması giriş noktası.
+        .executableTarget(
+            name: "Verificator",
+            dependencies: ["VerificatorKit", "VerificatorCore"],
+            swiftSettings: [.defaultIsolation(MainActor.self)]
+        ),
+        // Otomasyon ve CI iş akışları için komut satırı denetçisi.
+        .executableTarget(
+            name: "verificator-cli",
+            dependencies: ["VerificatorCore"],
+            path: "Sources/VerificatorCLI"
+        ),
+        // Çekirdek, uygulama mantığı ve yerelleştirme doğrulama testleri.
         .testTarget(
             name: "VerificatorTests",
-            dependencies: ["VerificatorCore"]
+            dependencies: ["VerificatorCore", "VerificatorKit"]
         ),
     ]
 )

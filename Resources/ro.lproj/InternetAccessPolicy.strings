@@ -1,0 +1,11 @@
+/* Verificator — Internet Access Policy (ro) */
+
+"IAPApplicationDescription" = "Verificator este un auditor criminalistic exclusiv în citire pe 4 straturi pentru pachete macOS, binare Mach-O, pachete de instalare și imagini de disc. Auditurile de bază rulează 100% local și offline.";
+"IAPUpdatePurpose" = "Când verificați actualizările (sau activați verificarea la pornire), Verificator interoghează GitHub Releases pentru versiuni noi și descarcă arhive verificate prin SHA-256 + Ed25519.";
+"IAPUpdateDeny" = "Dacă refuzați, Verificator nu vă va putea notifica și nu va putea descărca actualizările aplicației.";
+"IAPRevocationPurpose" = "Numai când activați verificarea revocării certificatelor OCSP (--revocation sau Configurări), macOS Security verifică certificatele de semnare și biletele de notarizare cu serverele Apple OCSP.";
+"IAPRevocationDeny" = "Dacă refuzați, verificările online de revocare OCSP nu vor fi disponibile; inspecțiile locale de semnătură, dylib și Mach-O continuă normal.";
+"IAPLocalAIPurpose" = "Când explicațiile AI locale prin Ollama sau LM Studio sunt activate, Verificator comunică strict pe interfața loopback locală (127.0.0.1) fără a trimite date pe internet.";
+"IAPLocalAIDeny" = "Dacă accesul loopback este blocat, rezumatele locale Ollama/LM Studio nu vor fi disponibile, în timp ce Apple Intelligence și analiza deterministă rămân funcționale.";
+"IAPServiceSecurityName" = "macOS Security și Gatekeeper";
+"IAPServiceSecurityPurpose" = "Evaluări opționale de politică Gatekeeper (spctl) și verificări de încredere OCSP realizate prin cadrele macOS Security.";

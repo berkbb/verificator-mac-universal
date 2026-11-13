@@ -15,5 +15,5 @@ Executes the full Swift Testing suite (`VerificatorTests`) and verifies that the
    ```
 
 ## Pass Criteria
-- All 8 test cases in `VerificatorTests` pass with 0 failures.
-- `Scripts/verify_bundle.sh` exits with code `0` (`✓ Paket doğrulandı`).
+- All test cases in `VerificatorTests` pass with 0 failures (1:1 localization parity, positional specifiers, update checker, log serialization, `/Applications` quarantine calibration, wrapped bundle layout, and on-device AI prerequisites).
+- `Scripts/verify_bundle.sh` exits with code `0` (all bundle structure, Mach-O architecture, code-signing, and `.strings` lint checks pass).

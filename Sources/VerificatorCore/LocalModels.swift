@@ -388,11 +388,28 @@ public enum ForensicAI {
             .prefix(8)
             .map { "[\($0.severity.rawValue.uppercased())] \($0.titleKey.rawValue)\($0.detailSuffix)" }
 
+        let architecturesText = report.architectures.isEmpty ? "Unknown" : report.architectures.joined(separator: ", ")
+        let entitlementsText = report.entitlements.isEmpty ? "None" : report.entitlements.prefix(10).joined(separator: ", ")
+        let risksText = report.entitlementRisks.isEmpty
+            ? "None"
+            : report.entitlementRisks.map { "[\($0.level.rawValue.uppercased())] \($0.entitlementKey)" }.joined(separator: ", ")
+        let spctlText = report.spctlAssessment ?? "Not evaluated"
+        let rpathText = report.lcRpaths.isEmpty ? "None" : report.lcRpaths.prefix(6).joined(separator: ", ")
+
         return """
-        Bundle: \(report.bundleName) (\(report.bundleId)) v\(report.shortVersion) (\(report.buildVersion))
+        Target Kind: \(report.targetKind.rawValue)
+        Target: \(report.bundleName) (\(report.bundleId)) v\(report.shortVersion) (\(report.buildVersion))
+        Executable: \(report.executableRelativePath)
+        Executable SHA-256: \(report.executableSHA256)
+        Architectures: \(architecturesText)
+        LC_RPATH: \(rpathText)
         Deterministic Verdict: \(report.verdict.rawValue.uppercased())
         Hardened Runtime: \(report.hasHardenedRuntime ? "Yes" : "No") | Notarized: \(report.isNotarized ? "Yes" : "No")
+        Quarantine (com.apple.quarantine): \(report.isQuarantined ? "Active (Not user-approved)" : "None (Clean / Approved)")
         Gatekeeper Status: \(report.gatekeeperStatus)
+        Gatekeeper Policy (spctl): \(spctlText)
+        Entitlements: \(entitlementsText)
+        Security-Relevant Entitlements: \(risksText)
         Authority: \(report.authorities.first ?? "None") | TeamIdentifier: \(report.teamIdentifier)
         Suspicious Dylibs: \(suspiciousDylibs.isEmpty ? "None" : suspiciousDylibs.joined(separator: ", "))
         Hook Symbol Categories: \(hookNames.isEmpty ? "None" : hookNames.joined(separator: ", "))

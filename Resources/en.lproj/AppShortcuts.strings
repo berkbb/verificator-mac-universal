@@ -1,0 +1,4 @@
+/* Verificator Siri and Shortcuts phrases — English. */
+
+"Audit app with ${applicationName}" = "Audit app with ${applicationName}";
+"Verify integrity with ${applicationName}" = "Verify integrity with ${applicationName}";

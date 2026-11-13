@@ -30,6 +30,12 @@ BUILD_ARGS=(-c "$CONFIG" --package-path "$ROOT")
 if [ "$UNIVERSAL" = 1 ]; then
   BUILD_ARGS+=(--arch arm64 --arch x86_64)
 fi
+if [ "${SWIFTPM_DISABLE_SANDBOX:-0}" = 1 ]; then
+  BUILD_ARGS+=(--disable-sandbox)
+fi
+if [ -n "${SWIFTPM_SCRATCH_PATH:-}" ]; then
+  BUILD_ARGS+=(--scratch-path "$SWIFTPM_SCRATCH_PATH")
+fi
 
 echo "▸ Verificator derleniyor ($CONFIG$([ "$UNIVERSAL" = 1 ] && echo ", universal"))…"
 swift build "${BUILD_ARGS[@]}"
@@ -41,6 +47,10 @@ mkdir -p "$MACOS" "$RES"
 
 cp "$BIN_DIR/Verificator" "$MACOS/Verificator"
 chmod +x "$MACOS/Verificator"
+if [ -x "$BIN_DIR/verificator-cli" ]; then
+  cp "$BIN_DIR/verificator-cli" "$MACOS/verificator-cli"
+  chmod +x "$MACOS/verificator-cli"
+fi
 cp "$ROOT/Support/Info.plist" "$CONTENTS/Info.plist"
 printf 'APPL????' > "$CONTENTS/PkgInfo"
 
@@ -49,6 +59,7 @@ cp "$ROOT/LICENSE" "$RES/Verificator-License.txt"
 cp "$ROOT/THIRD_PARTY_NOTICES.md" "$RES/Third-Party-Notices.txt"
 
 echo "▸ Kod imzası (ad-hoc)…"
+[ -x "$MACOS/verificator-cli" ] && codesign --force --sign - "$MACOS/verificator-cli"
 codesign --force --sign - "$MACOS/Verificator"
 codesign --force --sign - "$APP_DIR"
 

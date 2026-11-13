@@ -29,7 +29,7 @@ struct AboutView: View {
             Divider().padding(.horizontal, 50)
 
             VStack(spacing: 8) {
-                Label(settings.t(.aboutPoweredBy), systemImage: "checkmark.shield.fill")
+                Label(settings.t(.aboutPoweredBy, "Universal arm64 + x86_64"), systemImage: "checkmark.shield.fill")
                     .font(.callout.weight(.medium))
                 Text(settings.t(.aboutEngineCredit))
                     .font(.caption)

@@ -28,7 +28,14 @@ echo "▸ Sürüm: $VERSION (yapı $BUILD)"
 
 if [ "$SKIP_TESTS" = 0 ]; then
   echo "▸ Testler çalıştırılıyor…"
-  (cd "$ROOT" && swift test)
+  TEST_ARGS=()
+  if [ "${SWIFTPM_DISABLE_SANDBOX:-0}" = 1 ]; then
+    TEST_ARGS+=(--disable-sandbox)
+  fi
+  if [ -n "${SWIFTPM_SCRATCH_PATH:-}" ]; then
+    TEST_ARGS+=(--scratch-path "$SWIFTPM_SCRATCH_PATH")
+  fi
+  (cd "$ROOT" && swift test ${TEST_ARGS[@]+"${TEST_ARGS[@]}"})
 fi
 
 BUILD_ARGS=(release)

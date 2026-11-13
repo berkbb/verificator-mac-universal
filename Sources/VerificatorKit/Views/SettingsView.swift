@@ -11,6 +11,9 @@ struct SettingsView: View {
             Tab(settings.t(.settingsGeneral), systemImage: "gearshape") {
                 GeneralSettingsView()
             }
+            Tab(settings.t(.settingsScan), systemImage: "doc.text.magnifyingglass") {
+                ScanSettingsView()
+            }
             Tab(settings.t(.settingsShortcuts), systemImage: "command") {
                 ShortcutsSettingsView()
             }
@@ -107,31 +110,6 @@ private struct GeneralSettingsView: View {
                 aiCheckRows
             }
             .task { await model.refreshLocalModels() }
-
-            Section(settings.t(.settingsScanSection)) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Toggle(settings.t(.settingsDeepFrameworkCheck), isOn: $settings.deepFrameworkSignatureCheck)
-                    Text(settings.t(.settingsDeepFrameworkCheckNote))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Toggle(settings.t(.settingsExtractTargetStrings), isOn: $settings.extractTargetStrings)
-                Toggle(settings.t(.settingsAutoScanOnDrop), isOn: $settings.autoScanOnDrop)
-                Toggle(settings.t(.settingsRevealAfterExport), isOn: $settings.revealAfterExport)
-            }
-
-            Section(settings.t(.settingsRecentsSection)) {
-                HStack {
-                    Text("\(settings.existingRecentBundles.count) / \(AppSettings.maxRecentBundles)")
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Button(settings.t(.actionClearRecents)) {
-                        settings.clearRecents()
-                    }
-                    .disabled(settings.recentBundles.isEmpty)
-                }
-            }
         }
         .formStyle(.grouped)
         .alert(settings.t(.restartWarningTitle), isPresented: $showRestartAlert) {
@@ -274,6 +252,109 @@ private struct GeneralSettingsView: View {
     }
 }
 
+private struct ScanSettingsView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(AppSettings.self) private var settings
+
+    var body: some View {
+        @Bindable var settings = settings
+        Form {
+            Section(settings.t(.settingsScanSection)) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(settings.t(.settingsDeepFrameworkCheck), isOn: $settings.deepFrameworkSignatureCheck)
+                    Text(settings.t(.settingsDeepFrameworkCheckNote))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Toggle(settings.t(.settingsExtractTargetStrings), isOn: $settings.extractTargetStrings)
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(settings.t(.settingsIncludeSpctl), isOn: $settings.includeGatekeeperAssessment)
+                    Text(settings.t(.settingsIncludeSpctlNote))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(settings.t(.settingsCheckRevocation), isOn: $settings.checkCertificateRevocation)
+                    Text(settings.t(.settingsCheckRevocationNote))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Toggle(settings.t(.settingsAutoScanOnDrop), isOn: $settings.autoScanOnDrop)
+                Toggle(settings.t(.settingsRevealAfterExport), isOn: $settings.revealAfterExport)
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(settings.t(.settingsRedactDiagnostics), isOn: $settings.redactSharedDiagnostics)
+                    Text(settings.t(.settingsRedactDiagnosticsNote))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Section(settings.t(.settingsPermissionsSection)) {
+                HStack(spacing: 8) {
+                    Image(systemName: model.gatekeeperStatus == .disabled ? "exclamationmark.shield.fill" : "checkmark.shield.fill")
+                        .foregroundStyle(model.gatekeeperStatus == .enabled ? .green : (model.gatekeeperStatus == .disabled ? .orange : .secondary))
+                    Text(settings.t(model.gatekeeperStatus.labelKey))
+                    Spacer()
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: model.firewallStatus?.globalEnabled == true ? "flame.fill" : "flame")
+                        .foregroundStyle(model.firewallStatus?.globalEnabled == true ? .green : (model.firewallStatus?.globalEnabled == false ? .orange : .secondary))
+                    if let fw = model.firewallStatus, fw.isAvailable {
+                        let globalStr = settings.t(fw.globalEnabled == true ? .firewallStatusEnabled : .firewallStatusDisabled)
+                        let stealthStr = settings.t(fw.stealthMode == true ? .firewallStatusStealthOn : .firewallStatusStealthOff)
+                        let blockAllSuffix = fw.blockAll == true ? " · \(settings.t(.firewallStatusBlockAll))" : ""
+                        Text(settings.t(.settingsFirewallStatusFormat, globalStr, stealthStr) + blockAllSuffix)
+                    } else {
+                        Text(settings.t(.settingsFirewallUnavailable))
+                    }
+                    Spacer()
+                }
+                if let bootVol = model.bootVolumeEncryption {
+                    HStack(spacing: 8) {
+                        Image(systemName: bootVol.isEncrypted == true ? "lock.doc.fill" : "lock.open.trianglebadge.exclamationmark")
+                            .foregroundStyle(bootVol.isEncrypted == true ? .green : .orange)
+                        Text(settings.t(bootVol.isEncrypted == true ? .settingsBootVolumeEncrypted : .settingsBootVolumeUnencrypted, bootVol.volumeName))
+                        Spacer()
+                    }
+                }
+                HStack(spacing: 8) {
+                    Image(systemName: model.isFullDiskAccessGranted ? "lock.open.fill" : "lock.fill")
+                        .foregroundStyle(model.isFullDiskAccessGranted ? .green : .orange)
+                    Text(settings.t(model.isFullDiskAccessGranted ? .fdaStatusGranted : .fdaStatusMissing))
+                    Spacer()
+                    if !model.isFullDiskAccessGranted {
+                        Button(settings.t(.fdaOpenSettings)) {
+                            FullDiskAccess.openSystemSettings()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+            }
+
+            Section(settings.t(.settingsRecentsSection)) {
+                HStack {
+                    Text("\(settings.existingRecentBundles.count) / \(AppSettings.maxRecentBundles)")
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button(settings.t(.actionClearRecents)) {
+                        model.clearAllHistory()
+                    }
+                    .disabled(settings.recentBundles.isEmpty)
+                }
+            }
+        }
+        .formStyle(.grouped)
+        .onAppear {
+            model.refreshSystemSecurityStatus()
+        }
+    }
+}
+
 private struct ShortcutsSettingsView: View {
     @Environment(AppSettings.self) private var settings
     @State private var recordingAction: ShortcutAction? = nil
@@ -306,6 +387,9 @@ private struct ShortcutsSettingsView: View {
                 readOnlyShortcutRow(title: settings.t(.tabDylibs), shortcut: "⌘2")
                 readOnlyShortcutRow(title: settings.t(.tabSymbols), shortcut: "⌘3")
                 readOnlyShortcutRow(title: settings.t(.tabRaw), shortcut: "⌘4")
+                readOnlyShortcutRow(title: settings.t(.actionRemoveQuarantine), shortcut: "⌘K")
+                readOnlyShortcutRow(title: settings.t(.menuBatchScan), shortcut: "⌥⌘B")
+                readOnlyShortcutRow(title: settings.t(.menuSaveJSONReport), shortcut: "⌥⌘S")
                 readOnlyShortcutRow(title: settings.t(.menuShowLog), shortcut: "⌥⌘L")
             }
 
@@ -341,6 +425,7 @@ private struct ShortcutsSettingsView: View {
                 }
                 .buttonStyle(.plain)
                 .help(settings.t(.shortcutResetDefault))
+                .accessibilityLabel(settings.t(.shortcutResetDefault))
             }
 
             Button {
@@ -449,10 +534,15 @@ private struct ShortcutsSettingsView: View {
             control: hasControl
         )
 
-        if let conflict = ShortcutAction.allCases.first(where: { $0 != action && self.settings.shortcut(for: $0) == newShortcut }) {
+        if let conflict = settings.shortcutConflict(for: newShortcut, editingAction: action) {
             NSSound.beep()
             DispatchQueue.main.async {
-                self.recordingWarning = String(format: self.settings.t(.shortcutConflictWarning), self.settings.t(conflict.titleKey))
+                switch conflict {
+                case .customAction(let conflictingAction):
+                    self.recordingWarning = self.settings.t(.shortcutConflictWarning, self.settings.t(conflictingAction.titleKey))
+                case .systemShortcut(let titleKey):
+                    self.recordingWarning = self.settings.t(.shortcutSystemConflictWarning, self.settings.t(titleKey))
+                }
             }
             return nil
         }
@@ -469,6 +559,7 @@ private struct EngineAndUpdateSettingsView: View {
     @Environment(AppModel.self) private var model
     @Environment(AppSettings.self) private var settings
     @State private var confirmReset = false
+    @State private var copiedCLI = false
 
     var body: some View {
         @Bindable var settings = settings
@@ -493,6 +584,51 @@ private struct EngineAndUpdateSettingsView: View {
                 }
             }
 
+            Section(settings.t(.settingsCLISection)) {
+                LabeledContent(settings.t(.settingsCLIEmbeddedPath)) {
+                    Text(model.embeddedCLIPath)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(settings.t(.settingsCLIInstallCommand))
+                        .font(.subheadline)
+                    Text(model.cliInstallCommand)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .padding(8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color(NSColor.textBackgroundColor), in: RoundedRectangle(cornerRadius: 6))
+
+                    HStack(spacing: 10) {
+                        Button {
+                            model.copyCLIInstallCommand()
+                            copiedCLI = true
+                            Task { @MainActor in
+                                try? await Task.sleep(for: .seconds(2))
+                                copiedCLI = false
+                            }
+                        } label: {
+                            Label(
+                                settings.t(copiedCLI ? .actionCopied : .settingsCopyCLIInstall),
+                                systemImage: copiedCLI ? "checkmark" : "doc.on.doc"
+                            )
+                        }
+                        if copiedCLI {
+                            Text(settings.t(.settingsCopiedCLIInstallNotice))
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                        }
+                    }
+                }
+
+                Text(settings.t(.settingsIntegrationsNote))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+
             Section(settings.t(.appUpdateSection)) {
                 LabeledContent(settings.t(.appUpdateVersion), value: "\(AppInfo.version) (\(AppInfo.build))")
                 appUpdateStatus
@@ -502,13 +638,26 @@ private struct EngineAndUpdateSettingsView: View {
                     }
                     .disabled(model.appUpdateState == .checking)
 
-                    if case .available = model.appUpdateState {
-                        Button(settings.t(.appUpdateDownload)) {
-                            model.openAppDownload()
+                    if case .available(let release) = model.appUpdateState {
+                        if release.downloadURL != nil && (release.signatureURL != nil || release.checksumsURL != nil) {
+                            Button(settings.t(.appUpdateDownloadAndVerify)) {
+                                Task { await model.downloadAndVerifyAppUpdate(release: release) }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(model.updateDownloadState == .downloading)
+
+                            Button(settings.t(.appUpdateOpenInBrowser)) {
+                                model.openAppDownload()
+                            }
+                        } else {
+                            Button(settings.t(.appUpdateDownload)) {
+                                model.openAppDownload()
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
+                updateDownloadStatus
                 Toggle(settings.t(.updateAutoCheck), isOn: $settings.checkUpdatesAtLaunch)
                     .onChange(of: settings.checkUpdatesAtLaunch) { settings.updateConsentAsked = true }
             }
@@ -522,8 +671,7 @@ private struct EngineAndUpdateSettingsView: View {
         .formStyle(.grouped)
         .confirmationDialog(settings.t(.settingsResetConfirm), isPresented: $confirmReset) {
             Button(settings.t(.settingsReset), role: .destructive) {
-                settings.resetAll()
-                model.refreshTools()
+                model.resetAllSettings()
             }
         }
     }
@@ -547,6 +695,44 @@ private struct EngineAndUpdateSettingsView: View {
         case .failed(let message):
             Label(message, systemImage: "exclamationmark.triangle.fill")
                 .foregroundStyle(.orange)
+        }
+    }
+
+    @ViewBuilder
+    private var updateDownloadStatus: some View {
+        switch model.updateDownloadState {
+        case .idle:
+            EmptyView()
+        case .downloading:
+            Label { Text(settings.t(.appUpdateDownloading)) } icon: { ProgressView().controlSize(.small) }
+        case .verified(let result):
+            VStack(alignment: .leading, spacing: 6) {
+                Label(
+                    settings.t(.appUpdateVerifiedSuccess, String(result.sha256.prefix(12)), result.fileURL.lastPathComponent),
+                    systemImage: "checkmark.seal.fill"
+                )
+                .font(.footnote)
+                .foregroundStyle(.green)
+                .textSelection(.enabled)
+
+                HStack(spacing: 8) {
+                    Button(settings.t(.appUpdateOpenInstaller), systemImage: "arrow.up.forward.app") {
+                        model.openVerifiedUpdate(result.fileURL)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+
+                    Button(settings.t(.buttonShowInFinder), systemImage: "folder") {
+                        model.revealVerifiedUpdate(result.fileURL)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+            }
+        case .failed(let message):
+            Label(settings.t(.appUpdateVerifyFailed, message), systemImage: "xmark.octagon.fill")
+                .font(.footnote)
+                .foregroundStyle(.red)
         }
     }
 }

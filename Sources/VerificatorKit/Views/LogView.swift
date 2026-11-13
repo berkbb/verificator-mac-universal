@@ -83,9 +83,14 @@ struct LogView: View {
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button(settings.t(.buttonCopy), systemImage: "doc.on.doc") {
-                    copy(selection.isEmpty ? Set(visible.map(\.id)) : selection)
+                    copy(selection.isEmpty ? Set(visible.map(\.id)) : selection, redacted: false)
                 }
                 .help(settings.t(.buttonCopy))
+                .disabled(visible.isEmpty)
+                Button(settings.t(.actionCopyMaskedLogs), systemImage: "eye.slash") {
+                    copy(selection.isEmpty ? Set(visible.map(\.id)) : selection, redacted: true)
+                }
+                .help(settings.t(.actionCopyMaskedLogs))
                 .disabled(visible.isEmpty)
                 Button(settings.t(.logClear), systemImage: "trash") {
                     selection = []
@@ -135,11 +140,13 @@ struct LogView: View {
         .joined(separator: "\n")
     }
 
-    private func copy(_ ids: Set<AppLog.Entry.ID>) {
+    private func copy(_ ids: Set<AppLog.Entry.ID>, redacted: Bool = false) {
         let entries = store.entries.filter { ids.contains($0.id) }
         guard !entries.isEmpty else { return }
+        let raw = text(for: entries)
+        let payload = redacted ? DiagnosticMasker().redact(text: raw) : raw
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text(for: entries), forType: .string)
+        NSPasteboard.general.setString(payload, forType: .string)
     }
 }
 

@@ -7,20 +7,70 @@ public struct AppRelease: Sendable, Equatable {
     public let version: String
     public let pageURL: URL
     public let downloadURL: URL?
+    public let signatureURL: URL?
+    public let checksumsURL: URL?
 
-    public init(version: String, pageURL: URL, downloadURL: URL?) {
+    public init(
+        version: String,
+        pageURL: URL,
+        downloadURL: URL?,
+        signatureURL: URL? = nil,
+        checksumsURL: URL? = nil
+    ) {
         self.version = version
         self.pageURL = pageURL
         self.downloadURL = downloadURL
+        self.signatureURL = signatureURL
+        self.checksumsURL = checksumsURL
     }
 }
 
-/// Verificator güncellemesini GitHub Releases üzerinden denetler.
+public struct VerifiedUpdateResult: Sendable, Equatable {
+    public let fileURL: URL
+    public let sha256: String
+    public let signatureVerified: Bool
+    public let checksumVerified: Bool
+
+    public init(fileURL: URL, sha256: String, signatureVerified: Bool, checksumVerified: Bool) {
+        self.fileURL = fileURL
+        self.sha256 = sha256
+        self.signatureVerified = signatureVerified
+        self.checksumVerified = checksumVerified
+    }
+}
+
+/// Verificator güncellemesini GitHub Releases üzerinden denetler ve indirilen sürümü SHA-256 + Ed25519 ile doğrular.
 public enum AppUpdateChecker {
     public enum CheckError: Error, Equatable, Sendable {
         case noReleases
         case badResponse(Int)
         case invalidData
+    }
+
+    public enum VerifiedDownloadError: Error, Equatable, Sendable, LocalizedError {
+        case noDownloadURL
+        case downloadFailed(Int)
+        case missingPublicKey
+        case missingVerificationMetadata
+        case checksumMismatch(expected: String, actual: String)
+        case signatureInvalid
+
+        public var errorDescription: String? {
+            switch self {
+            case .noDownloadURL:
+                return "No verified download asset URL found."
+            case .downloadFailed(let status):
+                return "HTTP \(status)"
+            case .missingPublicKey:
+                return "Embedded Ed25519 public key (VerificatorUpdatePublicEDKey) is missing."
+            case .missingVerificationMetadata:
+                return "Release does not include .sig or SHA256SUMS verification metadata."
+            case .checksumMismatch(let expected, let actual):
+                return "SHA-256 mismatch (expected \(expected.prefix(12))..., got \(actual.prefix(12))...)."
+            case .signatureInvalid:
+                return "Ed25519 signature verification failed."
+            }
+        }
     }
 
     public static func latestReleaseURL(repository: String) -> URL? {
@@ -44,20 +94,31 @@ public enum AppUpdateChecker {
             throw CheckError.invalidData
         }
         let assets = (object["assets"] as? [[String: Any]]) ?? []
-        func asset(withSuffix suffix: String) -> URL? {
-            guard let url = assets.first(where: { ($0["name"] as? String)?.lowercased().hasSuffix(suffix) == true })
-                .flatMap({ $0["browser_download_url"] as? String })
-                .flatMap(URL.init(string:)) else { return nil }
+        func asset(matching predicate: (String) -> Bool) -> URL? {
+            guard let url = assets.first(where: {
+                guard let name = ($0["name"] as? String)?.lowercased() else { return false }
+                return predicate(name)
+            })
+            .flatMap({ $0["browser_download_url"] as? String })
+            .flatMap(URL.init(string:)) else { return nil }
             guard isReleaseURL(url, repository: repository, download: true) else {
                 AppLog.shared.warning(.update, "Ignored a download address outside GitHub releases of \(repository)", detail: url.absoluteString)
                 return nil
             }
             return url
         }
+
+        let dmgURL = asset { $0.hasSuffix(".dmg") }
+        let zipURL = asset { $0.hasSuffix(".zip") }
+        let sigURL = asset { $0.hasSuffix(".dmg.sig") } ?? asset { $0.hasSuffix(".sig") }
+        let checksumURL = asset { $0 == "sha256sums.txt" || $0 == "sha256sums" }
+
         return AppRelease(
             version: normalizedVersion(tag),
             pageURL: page,
-            downloadURL: asset(withSuffix: ".dmg") ?? asset(withSuffix: ".zip")
+            downloadURL: dmgURL ?? zipURL,
+            signatureURL: sigURL,
+            checksumsURL: checksumURL
         )
     }
 
@@ -94,6 +155,96 @@ public enum AppUpdateChecker {
         if status == 404 { throw CheckError.noReleases }
         guard (200..<300).contains(status) else { throw CheckError.badResponse(status) }
         return try parse(data, repository: repository)
+    }
+
+    /// Sürüm arşivini geçici bir dosyaya indirir; varsa SHA-256 özetini ve Ed25519 `.sig` imzasını doğruladıktan sonra hedef klasöre taşır.
+    public static func downloadAndVerify(
+        release: AppRelease,
+        destinationDirectory: URL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first ?? FileManager.default.temporaryDirectory,
+        publicKeyOverride: String? = nil,
+        session: URLSession = .shared
+    ) async throws -> VerifiedUpdateResult {
+        guard let downloadURL = release.downloadURL else {
+            throw VerifiedDownloadError.noDownloadURL
+        }
+        guard release.signatureURL != nil || release.checksumsURL != nil else {
+            throw VerifiedDownloadError.missingVerificationMetadata
+        }
+
+        let fm = FileManager.default
+        let stagingDir = fm.temporaryDirectory.appendingPathComponent("VerificatorUpdate-\(UUID().uuidString)", isDirectory: true)
+        try fm.createDirectory(at: stagingDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: stagingDir) }
+
+        let (archiveTempURL, archiveResponse) = try await session.download(from: downloadURL)
+        let archiveStatus = (archiveResponse as? HTTPURLResponse)?.statusCode ?? 200
+        guard (200..<300).contains(archiveStatus) else {
+            try? fm.removeItem(at: archiveTempURL)
+            throw VerifiedDownloadError.downloadFailed(archiveStatus)
+        }
+
+        let fileName = downloadURL.lastPathComponent
+        let stagedFileURL = stagingDir.appendingPathComponent(fileName)
+        if fm.fileExists(atPath: stagedFileURL.path) {
+            try fm.removeItem(at: stagedFileURL)
+        }
+        try fm.moveItem(at: archiveTempURL, to: stagedFileURL)
+
+        let actualSHA = try UpdateChecksums.sha256(of: stagedFileURL)
+        var checksumVerified = false
+        var signatureVerified = false
+
+        if let checksumsURL = release.checksumsURL {
+            let (sumData, sumResponse) = try await session.data(from: checksumsURL)
+            let sumStatus = (sumResponse as? HTTPURLResponse)?.statusCode ?? 200
+            guard (200..<300).contains(sumStatus) else {
+                throw VerifiedDownloadError.downloadFailed(sumStatus)
+            }
+            let table = UpdateChecksums.parse(String(decoding: sumData, as: UTF8.self))
+            guard let expectedSHA = table[fileName] ?? table["./\(fileName)"] else {
+                throw VerifiedDownloadError.checksumMismatch(expected: "missing", actual: actualSHA)
+            }
+            guard expectedSHA.caseInsensitiveCompare(actualSHA) == .orderedSame else {
+                throw VerifiedDownloadError.checksumMismatch(expected: expectedSHA, actual: actualSHA)
+            }
+            checksumVerified = true
+        }
+
+        if let signatureURL = release.signatureURL {
+            guard let publicKey = publicKeyOverride ?? UpdateSignature.bundledPublicKey, !publicKey.isEmpty else {
+                throw VerifiedDownloadError.missingPublicKey
+            }
+            let (sigData, sigResponse) = try await session.data(from: signatureURL)
+            let sigStatus = (sigResponse as? HTTPURLResponse)?.statusCode ?? 200
+            guard (200..<300).contains(sigStatus) else {
+                throw VerifiedDownloadError.downloadFailed(sigStatus)
+            }
+            let sigText = String(decoding: sigData, as: UTF8.self)
+            let isValid = try UpdateSignature.isValid(fileURL: stagedFileURL, signatureBase64: sigText, publicKeyBase64: publicKey)
+            guard isValid else {
+                throw VerifiedDownloadError.signatureInvalid
+            }
+            signatureVerified = true
+        }
+
+        guard checksumVerified || signatureVerified else {
+            throw VerifiedDownloadError.missingVerificationMetadata
+        }
+
+        try fm.createDirectory(at: destinationDirectory, withIntermediateDirectories: true)
+        let finalURL = destinationDirectory.appendingPathComponent(fileName)
+        if fm.fileExists(atPath: finalURL.path) {
+            try fm.removeItem(at: finalURL)
+        }
+        try fm.moveItem(at: stagedFileURL, to: finalURL)
+
+        AppLog.shared.info(.update, "Verified update downloaded to \(finalURL.path)", detail: "SHA-256: \(actualSHA), Ed25519: \(signatureVerified)")
+        return VerifiedUpdateResult(
+            fileURL: finalURL,
+            sha256: actualSHA,
+            signatureVerified: signatureVerified,
+            checksumVerified: checksumVerified
+        )
     }
 }
 

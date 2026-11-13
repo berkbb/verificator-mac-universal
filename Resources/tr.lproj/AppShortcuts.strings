@@ -1,0 +1,4 @@
+/* Verificator Siri ve Kestirmeler ifadeleri — Türkçe. Anahtarlar VerificatorIntents.swift ifadeleridir. */
+
+"Audit app with ${applicationName}" = "${applicationName} ile uygulamayı denetle";
+"Verify integrity with ${applicationName}" = "${applicationName} ile bütünlüğü doğrula";
