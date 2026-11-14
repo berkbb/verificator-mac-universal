@@ -646,4 +646,29 @@ struct Group1And2Tests {
         model.handleIncomingURL(URL(string: "verificator://posture")!)
         #expect(model.workspaceMode == .systemPosture)
     }
+
+    @Test("Segmented pickers do not clamp width with maxWidth modifiers that cause macOS segment overlap")
+    func segmentedPickersAvoidClampedMaxWidth() throws {
+        let viewsDir = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/VerificatorKit/Views", isDirectory: true)
+
+        let files = try FileManager.default.contentsOfDirectory(at: viewsDir, includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "swift" }
+        #expect(!files.isEmpty)
+
+        for file in files {
+            let lines = try String(contentsOf: file, encoding: .utf8).components(separatedBy: .newlines)
+            for (index, line) in lines.enumerated() where line.contains(".pickerStyle(.segmented)") {
+                let lookAheadEnd = min(lines.count - 1, index + 3)
+                let modifierSlice = lines[index...lookAheadEnd].joined(separator: "\n")
+                #expect(
+                    !modifierSlice.contains(".frame(maxWidth:"),
+                    "Segmented picker in \(file.lastPathComponent):\(index + 1) must not cap width with .frame(maxWidth:)"
+                )
+            }
+        }
+    }
 }

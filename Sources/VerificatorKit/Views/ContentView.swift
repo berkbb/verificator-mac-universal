@@ -94,6 +94,7 @@ struct ContentView: View {
                             Text(settings.t(.tabRaw)).tag(3)
                         }
                         .pickerStyle(.segmented)
+                        .labelsHidden()
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
 
@@ -820,23 +821,14 @@ struct ContentView: View {
                         return matchesFilter && matchesQuery
                     }
 
-                    HStack(spacing: 12) {
-                        TextField(settings.t(.batchSearchPlaceholder), text: $batchSearchText)
-                            .textFieldStyle(.roundedBorder)
-
-                        Picker("", selection: $batchFilter) {
-                            ForEach(BatchFilter.allCases) { filter in
-                                Text(settings.t(filter.titleKey)).tag(filter)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(maxWidth: 340)
-
-                        Text(settings.t(.filterMatchCount, filteredReports.count, summary.reports.count))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .monospacedDigit()
-                    }
+                    segmentedFilterBar(
+                        placeholder: settings.t(.batchSearchPlaceholder),
+                        searchText: $batchSearchText,
+                        filter: $batchFilter,
+                        cases: BatchFilter.allCases,
+                        titleForCase: { settings.t($0.titleKey) },
+                        matchCountText: settings.t(.filterMatchCount, filteredReports.count, summary.reports.count)
+                    )
                     .padding(.horizontal, 20)
 
                     ScrollView {
@@ -914,6 +906,57 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private func segmentedFilterBar<Filter: CaseIterable & Hashable & Identifiable>(
+        placeholder: String,
+        searchText: Binding<String>,
+        filter: Binding<Filter>,
+        cases: Filter.AllCases,
+        titleForCase: @escaping (Filter) -> String,
+        matchCountText: String? = nil
+    ) -> some View where Filter.AllCases: RandomAccessCollection {
+        let searchField = TextField(placeholder, text: searchText)
+            .textFieldStyle(.roundedBorder)
+
+        let filterPicker = Picker("", selection: filter) {
+            ForEach(cases) { item in
+                Text(titleForCase(item)).tag(item)
+            }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .fixedSize()
+
+        let countBadge = matchCountText.map { text in
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize()
+        }
+
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                searchField
+                    .frame(minWidth: 180, idealWidth: 220, maxWidth: .infinity)
+                filterPicker
+                countBadge
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                searchField
+                HStack(spacing: 12) {
+                    filterPicker
+                    if countBadge != nil {
+                        Spacer(minLength: 8)
+                        countBadge
+                    }
+                }
+            }
+        }
     }
 
     private func verdictBanner(for report: BundleAuditReport) -> some View {
@@ -1679,18 +1722,13 @@ struct ContentView: View {
         }
 
         return VStack(alignment: .leading, spacing: 18) {
-            HStack(spacing: 12) {
-                TextField(settings.t(.searchDylibsPlaceholder), text: $dylibSearchText)
-                    .textFieldStyle(.roundedBorder)
-
-                Picker("", selection: $dylibFilter) {
-                    ForEach(DylibFilter.allCases) { filter in
-                        Text(settings.t(filter.titleKey)).tag(filter)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
-            }
+            segmentedFilterBar(
+                placeholder: settings.t(.searchDylibsPlaceholder),
+                searchText: $dylibSearchText,
+                filter: $dylibFilter,
+                cases: DylibFilter.allCases,
+                titleForCase: { settings.t($0.titleKey) }
+            )
 
             GroupBox {
                 if filteredBundled.isEmpty {

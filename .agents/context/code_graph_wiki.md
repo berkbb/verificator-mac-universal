@@ -1,6 +1,6 @@
 # Code-Graph Memory Wiki (`code_graph_wiki.md`)
 
-> Regenerated via `graphify update .` in `graphify-out/GRAPH_REPORT.md` (2,212 nodes · 5,061 edges · 75 communities · 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · 0 import cycles · 0 API tokens).
+> Regenerated via `graphify update .` in `graphify-out/GRAPH_REPORT.md` (2,214 nodes · 5,068 edges · 78 communities · 90% EXTRACTED · 10% INFERRED · 0% AMBIGUOUS · 0 import cycles · 0 API tokens).
 
 ## 1. Core God Nodes & High-Centrality Symbols
 
