@@ -31,6 +31,8 @@ struct AboutView: View {
             VStack(spacing: 8) {
                 Label(settings.t(.aboutPoweredBy, "Universal arm64 + x86_64"), systemImage: "checkmark.shield.fill")
                     .font(.callout.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                 Text(settings.t(.aboutEngineCredit))
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -58,10 +60,10 @@ struct AboutView: View {
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal, 30)
+        .padding(.horizontal, 28)
         .padding(.top, 34)
         .padding(.bottom, 24)
-        .frame(width: 500)
+        .frame(width: 540)
         .containerBackground(.thickMaterial, for: .window)
         .windowMinimizeBehavior(.disabled)
         .sheet(item: $license) { LicenseViewerSheet(item: $0) }
