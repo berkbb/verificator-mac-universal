@@ -454,6 +454,11 @@ struct ContentView: View {
                 }
             }
             .listStyle(.sidebar)
+            .onDeleteCommand {
+                if case .recent(let url) = sidebarSelection.wrappedValue {
+                    removeSingleRecent(url)
+                }
+            }
 
             if model.report != nil || model.workspaceMode != .single {
                 Divider()
