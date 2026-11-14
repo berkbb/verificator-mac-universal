@@ -11,6 +11,7 @@ private func printUsage() {
       verificator-cli --diff <baseline> <target> [options]
       verificator-cli --persistence [options]
       verificator-cli --running [options]
+      verificator-cli --posture [options]
 
     SUPPORTED TARGETS:
       .app, .pkg, .mpkg, .dmg, .framework, .bundle, .appex, .xpc, .kext, .plugin, .dylib, .so, Mach-O binaries
@@ -20,7 +21,8 @@ private func printUsage() {
       --batch                 Scan every .app, .dmg, .pkg, and .mpkg item inside <path>
       --diff <old> <new>      Compare two bundles, binaries, or saved .json audit reports
       --persistence           Audit LaunchAgents, LaunchDaemons, and PrivilegedHelperTools
-      --running               Audit active macOS processes and DYLD_INSERT_LIBRARIES state
+      --running               Audit active macOS processes, DYLD_INSERT_LIBRARIES, and kernel sockets
+      --posture               Audit host macOS security posture (SIP, SSV, Gatekeeper, FileVault, SMART, orphan pkg receipts)
       --expected-checksum <v> Verify target SHA-256/SHA-512 against hex string, checksum line, or SHA256SUMS file
       --redact                Mask home directories, personal paths, and usernames in output
       --json                  Output structured JSON report
@@ -74,6 +76,9 @@ private func printHumanReport(
     print("Verdict:       \(report.verdict.rawValue.uppercased())")
     print("Team ID:       \(report.teamIdentifier)")
     print("Authority:     \(report.authorities.isEmpty ? "-" : report.authorities.joined(separator: " -> "))")
+    if report.isDevelopmentSigned {
+        print("Cert Profile:  Apple Development Certificate (Informational)")
+    }
     print("Quarantine:    \(qText)")
     print("Hardened:      \(report.hasHardenedRuntime ? "Yes" : "No") | Notarized: \(report.isNotarized ? "Yes" : "No")")
     if !report.deceptiveNames.isEmpty {
@@ -161,6 +166,7 @@ private enum CLIMode {
     case diff(baselinePath: String, targetPath: String)
     case persistence
     case runningProcesses
+    case posture
 }
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -193,6 +199,8 @@ while index < args.count {
         mode = .persistence
     case "--running":
         mode = .runningProcesses
+    case "--posture":
+        mode = .posture
     case "--diff":
         guard index + 2 < args.count else {
             writeStderr("--diff requires <baseline> and <target> paths")
@@ -327,24 +335,47 @@ case .runningProcesses:
         let data = try summary.jsonData(prettyPrinted: true)
         print(redactTextIfNeeded(String(decoding: data, as: UTF8.self), masker: activeMasker))
     } else {
-        print("Running Processes: total=\(summary.totalCount) clean=\(summary.cleanCount) warning=\(summary.warningCount) tampered=\(summary.tamperedCount) dyldEnv=\(summary.dyldEnvCount) uniqueBinaries=\(summary.uniqueBinariesCount)")
+        print("Running Processes: total=\(summary.totalCount) clean=\(summary.cleanCount) warning=\(summary.warningCount) tampered=\(summary.tamperedCount) dyldEnv=\(summary.dyldEnvCount) sockets=\(summary.processesWithSocketsCount) listening=\(summary.listeningSocketsCount) uniqueBinaries=\(summary.uniqueBinariesCount)")
         for proc in summary.items {
             let q = proc.isQuarantined ? " [QUARANTINED]" : ""
             let dyld = proc.dyldInsertLibraries.isEmpty ? "" : " [DYLD_INSERT=\(proc.dyldInsertLibraries.joined(separator: ":"))]"
             let dynMismatch = proc.dynamicSignatureMismatch ? " [DYNAMIC_SIG_MISMATCH]" : ""
             let mapped = proc.unsignedMappedLibraries.isEmpty ? "" : " [UNSIGNED_LIBS=\(proc.unsignedMappedLibraries.count)]"
+            let socks = proc.networkSockets.isEmpty ? "" : " [SOCKETS=\(proc.networkSockets.prefix(3).map(\.endpointSummary).joined(separator: "; "))\(proc.networkSockets.count > 3 ? " +\(proc.networkSockets.count - 3)" : "")]"
             let parent = if let pName = proc.parentName, let pPid = proc.parentPid {
                 " <- \(pName)(\(pPid))"
             } else {
                 ""
             }
-            let line = "  [\(proc.verdict.rawValue.uppercased())]\(q)\(dyld)\(dynMismatch)\(mapped) PID \(proc.pid)\(parent) \(OpenSafety.visibleName(proc.name)) (\(proc.teamIdentifier)) - \(OpenSafety.visibleName(proc.executablePath))"
+            let line = "  [\(proc.verdict.rawValue.uppercased())]\(q)\(dyld)\(dynMismatch)\(mapped)\(socks) PID \(proc.pid)\(parent) \(OpenSafety.visibleName(proc.name)) (\(proc.teamIdentifier)) - \(OpenSafety.visibleName(proc.executablePath))"
             print(redactTextIfNeeded(line, masker: activeMasker))
         }
     }
     if summary.tamperedCount > 0 { exit(1) }
     if summary.warningCount > 0 { exit(2) }
     exit(0)
+
+case .posture:
+    let rawPosture = SystemSecurityPostureAuditor.collect(includeOrphanReceipts: true)
+    let posture = activeMasker.map { rawPosture.redacted(using: $0) } ?? rawPosture
+    if outputJSON {
+        let data = try posture.jsonData(prettyPrinted: true)
+        print(String(decoding: data, as: UTF8.self))
+    } else {
+        print("System Security Posture (\(posture.cpuArchitecture) · \(posture.macOSVersion)):")
+        print("  SIP:         \(posture.sipStatus.rawValue) — \(posture.sipDetail)")
+        print("  SSV:         \(posture.ssvStatus.rawValue)")
+        print("  Gatekeeper:  \(posture.gatekeeperMasterStatus.rawValue)")
+        print("  FileVault:   \(posture.fileVaultBootEncrypted.map { $0 ? "Encrypted" : "Unencrypted" } ?? "Unknown") (\(posture.bootVolumeFormat))")
+        print("  Firewall:    \(posture.firewallEnabled.map { $0 ? "Enabled" : "Disabled" } ?? "Unknown") (Stealth: \(posture.firewallStealthMode.map { $0 ? "On" : "Off" } ?? "Unknown"))")
+        print("  S.M.A.R.T.:  \(posture.smartHealthStatus.rawValue) (\(posture.smartDetail))")
+        print("  FDA:         \(posture.fullDiskAccessGranted ? "Granted" : "Not Granted")")
+        print("  Orphan Pkgs: \(posture.orphanedReceipts.count) (audited \(posture.receiptsAuditedCount))")
+        for orphan in posture.orphanedReceipts {
+            print("    - \(orphan.packageIdentifier) (\(orphan.version)) -> \(orphan.forgetCommand)")
+        }
+    }
+    exit(posture.sipStatus == .disabled || posture.smartHealthStatus == .failing ? 2 : 0)
 
 case .singleOrBatch:
     guard let targetPath else {

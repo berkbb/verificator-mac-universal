@@ -101,6 +101,11 @@ public enum ForensicScanner {
         var isNotarized: Bool = false
         var cdHash: String = "-"
 
+        var isDevelopmentCertificate: Bool {
+            guard let leaf = authorities.first else { return false }
+            return ForensicScanner.isDevelopmentCertificateSummary(leaf)
+        }
+
         var hasOfficialAppleChain: Bool {
             authorities.contains {
                 $0.contains("Apple Root CA")
@@ -113,6 +118,12 @@ public enum ForensicScanner {
                     || $0.contains("Software Signing")
             }
         }
+    }
+
+    public static func isDevelopmentCertificateSummary(_ summary: String) -> Bool {
+        summary.hasPrefix("Apple Development:")
+            || summary.hasPrefix("Mac Developer:")
+            || summary.hasPrefix("iPhone Developer:")
     }
 
     internal static func parseSignature(
@@ -406,7 +417,7 @@ public enum ForensicScanner {
                 isWrappedBundle = true
             } else {
                 let wrapperDir = url.appendingPathComponent("Wrapper", isDirectory: true)
-                if let wrappedApps = try? fm.contentsOfDirectory(at: wrapperDir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]),
+                if let wrappedApps = DirectoryEntries.urls(at: wrapperDir, includeHidden: false),
                    let innerApp = wrappedApps.first(where: { $0.pathExtension.lowercased() == "app" }),
                    fm.fileExists(atPath: innerApp.appendingPathComponent("Info.plist").path) {
                     bundleRootURL = innerApp
@@ -637,9 +648,17 @@ public enum ForensicScanner {
         let hasActiveSwizzle = symbols.contains("_method_exchangeImplementations")
             || symbols.contains("_method_setImplementation")
             || symbols.contains("_class_replaceMethod")
-        let hasActiveMemoryPatch = symbols.contains("_mach_vm_protect")
-            || symbols.contains("_mach_vm_write")
-            || symbols.contains("_sys_icache_invalidate")
+        let hasActiveMemoryPatch: Bool
+        if isDylib {
+            hasActiveMemoryPatch = symbols.contains("_mach_vm_protect")
+                || symbols.contains("_mach_vm_write")
+                || symbols.contains("_sys_icache_invalidate")
+        } else {
+            // Standalone executables (e.g. Bun, V8, Node, JVM, PyPy) legitimately use mach_vm_protect
+            // and sys_icache_invalidate for W^X JIT compilation, and _dyld_get_image_vmaddr_slide for
+            // crash symbolication. Only treat explicit _mach_vm_write or swizzle+ASLR slide as hooking.
+            hasActiveMemoryPatch = symbols.contains("_mach_vm_write")
+        }
 
         let isInjectedCrack = hasActiveMemoryPatch
             || (hasActiveSwizzle && (!detectedDyld.isEmpty || (isDylib && !parentHasOfficialChain)))
@@ -765,13 +784,120 @@ public enum ForensicScanner {
         }
     }
 
+    internal static let cancelledToolExitCode: Int32 = -2
+    internal static let timedOutToolExitCode: Int32 = -3
+    internal static let bundleVerifyTimeoutSeconds: TimeInterval = 180
+    internal static let executableVerifyTimeoutSeconds: TimeInterval = 60
+    internal static let pkgVerifyTimeoutSeconds: TimeInterval = 120
+    public static let defaultGatekeeperTimeoutSeconds: TimeInterval = 90
+
+    internal enum CodeSignatureVerificationOutcome: Equatable, Sendable {
+        case skippedUnsigned
+        case cancelled
+        case valid
+        case timedOut(String)
+        case failed(String)
+    }
+
+    internal static func verifyCodeSignature(
+        at path: String,
+        isUnsigned: Bool,
+        timeoutSeconds: TimeInterval,
+        cancellation: ScanCancellationToken? = nil
+    ) -> (outcome: CodeSignatureVerificationOutcome, isUnsigned: Bool, rawOutput: String, gatekeeperStatus: String) {
+        let verifyResult = runTool(
+            "/usr/bin/codesign",
+            args: ["--verify", "--no-strict", path],
+            timeoutSeconds: timeoutSeconds,
+            cancellation: cancellation
+        )
+        let resolvedUnsigned = isUnsigned || verifyResult.output.contains("code object is not signed at all")
+        let outcome = evaluateVerifyResult(verifyResult, isUnsigned: resolvedUnsigned, cancellation: cancellation)
+        let gatekeeperStatus: String
+        switch outcome {
+        case .skippedUnsigned:
+            gatekeeperStatus = "Unsigned (Local Developer Build)"
+        case .cancelled:
+            gatekeeperStatus = "Cancelled"
+        case .valid:
+            gatekeeperStatus = "codesign --verify: OK (Valid on disk)"
+        case .timedOut(let detail):
+            gatekeeperStatus = "codesign --verify timed out: \(detail)"
+        case .failed(let detail):
+            gatekeeperStatus = detail.isEmpty
+                ? "exit \(verifyResult.exitCode)"
+                : detail.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: " | ")
+        }
+        return (outcome, resolvedUnsigned, verifyResult.output, gatekeeperStatus)
+    }
+
+    internal static func evaluateVerifyResult(
+        _ result: (output: String, exitCode: Int32),
+        isUnsigned: Bool,
+        cancellation: ScanCancellationToken? = nil
+    ) -> CodeSignatureVerificationOutcome {
+        if cancellation?.isCancelled == true || result.exitCode == cancelledToolExitCode {
+            return .cancelled
+        }
+        if isUnsigned || result.output.contains("code object is not signed at all") {
+            return .skippedUnsigned
+        }
+        if result.exitCode == timedOutToolExitCode {
+            let trimmed = result.output.trimmingCharacters(in: .whitespacesAndNewlines)
+            return .timedOut(trimmed.isEmpty ? "codesign --verify timed out" : trimmed)
+        }
+        if result.exitCode == 0 {
+            return .valid
+        }
+        return .failed(result.output.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    internal static func appendVerificationFindings(
+        _ outcome: CodeSignatureVerificationOutcome,
+        findings: inout [ForensicFinding]
+    ) {
+        switch outcome {
+        case .timedOut(let detail):
+            findings.append(ForensicFinding(
+                severity: .warning,
+                titleKey: .findingVerifyTimedOutTitle,
+                descKey: .findingVerifyTimedOutDesc,
+                detailSuffix: detail
+            ))
+        case .failed(let detail) where !detail.isEmpty:
+            findings.append(ForensicFinding(
+                severity: .critical,
+                titleKey: .findingVerifyFailedTitle,
+                descKey: .findingVerifyFailedDesc,
+                detailSuffix: detail
+            ))
+        case .skippedUnsigned, .cancelled, .valid, .failed:
+            break
+        }
+    }
+
     /// Seçili pakette isteğe bağlı Gatekeeper politika değerlendirmesi (`/usr/sbin/spctl --assess -vvv`) çalıştırır.
     public static func assessGatekeeper(
         at bundlePath: String,
         type assessType: String = "execute",
-        timeoutSeconds: TimeInterval = 15,
+        timeoutSeconds: TimeInterval = defaultGatekeeperTimeoutSeconds,
         cancellation: ScanCancellationToken? = nil
     ) -> (accepted: Bool, statusText: String) {
+        let detailed = assessGatekeeperDetailed(
+            at: bundlePath,
+            type: assessType,
+            timeoutSeconds: timeoutSeconds,
+            cancellation: cancellation
+        )
+        return (detailed.accepted, detailed.statusText)
+    }
+
+    internal static func assessGatekeeperDetailed(
+        at bundlePath: String,
+        type assessType: String = "execute",
+        timeoutSeconds: TimeInterval = defaultGatekeeperTimeoutSeconds,
+        cancellation: ScanCancellationToken? = nil
+    ) -> (accepted: Bool, timedOut: Bool, statusText: String) {
         let res = runTool(
             "/usr/sbin/spctl",
             args: ["--assess", "-vvv", "--type", assessType, bundlePath],
@@ -783,8 +909,39 @@ public enum ForensicScanner {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
             .joined(separator: " | ")
+        if res.exitCode == cancelledToolExitCode || cancellation?.isCancelled == true {
+            return (false, false, compact.isEmpty ? "Cancelled" : compact)
+        }
+        if res.exitCode == timedOutToolExitCode {
+            let status = compact.isEmpty ? "Process timed out after \(Int(timeoutSeconds))s" : compact
+            return (false, true, status)
+        }
         let accepted = res.exitCode == 0 || compact.localizedCaseInsensitiveContains("accepted")
-        return (accepted, compact.isEmpty ? "exit \(res.exitCode)" : compact)
+        return (accepted, false, compact.isEmpty ? "exit \(res.exitCode)" : compact)
+    }
+
+    internal static func appendGatekeeperFindings(
+        _ spctlResult: (accepted: Bool, timedOut: Bool, statusText: String)?,
+        warnOnRejection: Bool,
+        cancellation: ScanCancellationToken? = nil,
+        findings: inout [ForensicFinding]
+    ) {
+        guard cancellation?.isCancelled != true, let spctlResult, !spctlResult.accepted else { return }
+        if spctlResult.timedOut {
+            findings.append(ForensicFinding(
+                severity: .warning,
+                titleKey: .findingSpctlTimedOutTitle,
+                descKey: .findingSpctlTimedOutDesc,
+                detailSuffix: spctlResult.statusText
+            ))
+        } else if warnOnRejection {
+            findings.append(ForensicFinding(
+                severity: .warning,
+                titleKey: .findingSpctlRejectedTitle,
+                descKey: .findingSpctlRejectedDesc,
+                detailSuffix: spctlResult.statusText
+            ))
+        }
     }
 
     public static func auditTarget(
@@ -885,24 +1042,18 @@ public enum ForensicScanner {
         let entitlementData = parseEntitlements(for: layout.execURL.path, cancellation: cancellation)
         let entitlements = entitlementData.keys
         let rawEntitlementsOut = entitlementData.rawXML
-        let verifyResult = runTool("/usr/bin/codesign", args: ["--verify", "--no-strict", bundlePath], cancellation: cancellation)
-        let isNotSignedAtAll = verifyResult.output.contains("code object is not signed at all")
-        if isNotSignedAtAll {
-            mainSig.isUnsigned = true
-        }
+        let verification = verifyCodeSignature(
+            at: bundlePath,
+            isUnsigned: mainSig.isUnsigned,
+            timeoutSeconds: bundleVerifyTimeoutSeconds,
+            cancellation: cancellation
+        )
+        mainSig.isUnsigned = verification.isUnsigned
+        let gatekeeperStatus = verification.gatekeeperStatus
 
-        let gatekeeperStatus: String
-        if mainSig.isUnsigned {
-            gatekeeperStatus = "Unsigned (Local Developer Build)"
-        } else if verifyResult.exitCode == 0 {
-            gatekeeperStatus = "codesign --verify: OK (Valid on disk)"
-        } else {
-            gatekeeperStatus = verifyResult.output.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: " | ")
-        }
-
-        var spctlResult: (accepted: Bool, statusText: String)?
+        var spctlResult: (accepted: Bool, timedOut: Bool, statusText: String)?
         if options.includeGatekeeperAssessment && cancellation?.isCancelled != true {
-            spctlResult = assessGatekeeper(at: bundlePath, cancellation: cancellation)
+            spctlResult = assessGatekeeperDetailed(at: bundlePath, cancellation: cancellation)
         }
 
         // 2. Paket içi kütüphaneler (Frameworks / Libraries / MacOS / PlugIns / XPCServices / Helpers / WrappedBundle)
@@ -915,16 +1066,17 @@ public enum ForensicScanner {
 
         for dirURL in layout.scanDirectories {
             if cancellation?.isCancelled == true { break }
-            guard let items = try? fm.contentsOfDirectory(
-                at: dirURL,
-                includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
-                options: [.skipsHiddenFiles]
-            ) else {
+            guard let dirEntries = DirectoryEntries.list(at: dirURL, includeHidden: true) else {
                 continue
+            }
+            let items = dirEntries.compactMap { entry -> URL? in
+                if entry.name == ".DS_Store" || entry.name == ".localized" { return nil }
+                if entry.name.hasPrefix("._") && AppleDoubleDetector.isAppleDoubleMagic(at: entry.url) { return nil }
+                return entry.url
             }
             let dirTag = dirURL.lastPathComponent
             let allowsHelperScan = (dirURL == layout.macosURL || dirTag == "Helpers" || dirTag == "LoginItems")
-            for itemURL in items.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            for itemURL in items {
                 if cancellation?.isCancelled == true { break }
                 let name = itemURL.lastPathComponent
                 if dirURL == layout.macosURL && name == layout.executableName {
@@ -962,14 +1114,14 @@ public enum ForensicScanner {
                 // Electron/CEF gibi .framework/Libraries/*.dylib iç katmanlarını da denetle.
                 if isFramework {
                     let nestedLibsDir = itemURL.appendingPathComponent("Libraries", isDirectory: true)
-                    if let nestedItems = try? fm.contentsOfDirectory(
-                        at: nestedLibsDir,
-                        includingPropertiesForKeys: [.contentModificationDateKey, .fileSizeKey],
-                        options: [.skipsHiddenFiles]
-                    ) {
-                        for nestedURL in nestedItems.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                    if let nestedEntries = DirectoryEntries.list(at: nestedLibsDir, includeHidden: true) {
+                        for entry in nestedEntries {
                             if cancellation?.isCancelled == true { break }
-                            guard nestedURL.lastPathComponent.lowercased().hasSuffix(".dylib") else { continue }
+                            let nestedURL = entry.url
+                            if entry.name == ".DS_Store" || (entry.name.hasPrefix("._") && AppleDoubleDetector.isAppleDoubleMagic(at: nestedURL)) {
+                                continue
+                            }
+                            guard entry.name.lowercased().hasSuffix(".dylib") else { continue }
                             inspectBundledItem(
                                 at: nestedURL,
                                 displayName: "\(displayName)/Libraries/\(nestedURL.lastPathComponent)",
@@ -1073,19 +1225,10 @@ public enum ForensicScanner {
         let isDyldSharedCacheSystemFramework = !hasExec
             && targetKind == .nestedBundle
             && url.path.hasPrefix("/System/Library/")
-            && verifyResult.output.contains("bundle format is ambiguous")
+            && verification.rawOutput.contains("bundle format is ambiguous")
 
-        if !isDyldSharedCacheSystemFramework
-            && !mainSig.isUnsigned
-            && verifyResult.exitCode != 0
-            && !verifyResult.output.isEmpty
-            && cancellation?.isCancelled != true {
-            findings.append(ForensicFinding(
-                severity: .critical,
-                titleKey: .findingVerifyFailedTitle,
-                descKey: .findingVerifyFailedDesc,
-                detailSuffix: verifyResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
-            ))
+        if !isDyldSharedCacheSystemFramework {
+            appendVerificationFindings(verification.outcome, findings: &findings)
         }
 
         // Katman 4: Enjekte Hooking / Bellek Yamalama Kütüphanesi
@@ -1151,14 +1294,12 @@ public enum ForensicScanner {
             ))
         }
 
-        if let spctlResult, !spctlResult.accepted && (mainSig.hasOfficialAppleChain || !mainSig.authorities.isEmpty) {
-            findings.append(ForensicFinding(
-                severity: .warning,
-                titleKey: .findingSpctlRejectedTitle,
-                descKey: .findingSpctlRejectedDesc,
-                detailSuffix: spctlResult.statusText
-            ))
-        }
+        appendGatekeeperFindings(
+            spctlResult,
+            warnOnRejection: mainSig.hasOfficialAppleChain || !mainSig.authorities.isEmpty,
+            cancellation: cancellation,
+            findings: &findings
+        )
 
         let revocationStatus = evaluateRevocationStatus(
             atPath: bundlePath,
@@ -1167,6 +1308,39 @@ public enum ForensicScanner {
             cancellation: cancellation,
             findings: &findings
         )
+
+        if cancellation?.isCancelled != true {
+            let hiddenBinaries = AppleDoubleDetector.collectSuspiciousHiddenItems(
+                in: layout.scanDirectories,
+                relativeTo: url
+            )
+            if !hiddenBinaries.isEmpty {
+                findings.append(ForensicFinding(
+                    severity: .warning,
+                    titleKey: .findingHiddenBinaryTitle,
+                    descKey: .findingHiddenBinaryDesc,
+                    detailSuffix: hiddenBinaries.joined(separator: ", ")
+                ))
+            }
+
+            let symlinkAudit = BundleSymlinkAudit.audit(bundleURL: url)
+            if !symlinkAudit.loops.isEmpty {
+                findings.append(ForensicFinding(
+                    severity: .warning,
+                    titleKey: .findingSymlinkLoopTitle,
+                    descKey: .findingSymlinkLoopDesc,
+                    detailSuffix: symlinkAudit.loops.prefix(5).joined(separator: ", ")
+                ))
+            }
+            if !symlinkAudit.escapes.isEmpty {
+                findings.append(ForensicFinding(
+                    severity: .warning,
+                    titleKey: .findingSymlinkEscapeTitle,
+                    descKey: .findingSymlinkEscapeDesc,
+                    detailSuffix: symlinkAudit.escapes.prefix(5).joined(separator: ", ")
+                ))
+            }
+        }
 
         var verdict: IntegrityVerdict
         if findings.contains(where: { $0.severity == .critical }) {
@@ -1242,6 +1416,7 @@ public enum ForensicScanner {
             lcRpaths: rawRpaths,
             teamIdentifier: mainSig.teamId,
             authorities: resolvedAuthorities,
+            isDevelopmentSigned: mainSig.isDevelopmentCertificate,
             signedTimestamp: mainSig.signedTime,
             hasHardenedRuntime: mainSig.hasHardenedRuntime,
             isNotarized: mainSig.isNotarized,
@@ -1284,7 +1459,7 @@ public enum ForensicScanner {
         let fileSHA512 = digests.sha512
         let isQuarantined = hasQuarantineAttribute(at: path)
 
-        let res = runTool("/usr/sbin/pkgutil", args: ["--check-signature", path], timeoutSeconds: 15, cancellation: cancellation)
+        let res = runTool("/usr/sbin/pkgutil", args: ["--check-signature", path], timeoutSeconds: pkgVerifyTimeoutSeconds, cancellation: cancellation)
         let out = res.output
 
         var statusLine = "-"
@@ -1357,6 +1532,19 @@ public enum ForensicScanner {
                     detailSuffix: authorities.first ?? statusLine
                 ))
             }
+        } else if res.exitCode == cancelledToolExitCode || cancellation?.isCancelled == true {
+            verdict = .clean
+            gatekeeperStatus = "Cancelled"
+        } else if res.exitCode == timedOutToolExitCode {
+            verdict = .warning
+            let errDetail = out.trimmingCharacters(in: .whitespacesAndNewlines)
+            gatekeeperStatus = "pkgutil --check-signature timed out: \(errDetail)"
+            findings.append(ForensicFinding(
+                severity: .warning,
+                titleKey: .findingVerifyTimedOutTitle,
+                descKey: .findingVerifyTimedOutDesc,
+                detailSuffix: errDetail
+            ))
         } else {
             verdict = .tampered
             let errDetail = statusLine != "-" ? statusLine : out.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1380,9 +1568,13 @@ public enum ForensicScanner {
             verdict = .tampered
         }
 
-        var spctlResult: (accepted: Bool, statusText: String)?
+        var spctlResult: (accepted: Bool, timedOut: Bool, statusText: String)?
         if options.includeGatekeeperAssessment && !isUnsigned && cancellation?.isCancelled != true {
-            spctlResult = assessGatekeeper(at: path, type: "install", cancellation: cancellation)
+            spctlResult = assessGatekeeperDetailed(at: path, type: "install", cancellation: cancellation)
+            appendGatekeeperFindings(spctlResult, warnOnRejection: false, cancellation: cancellation, findings: &findings)
+            if verdict == .clean && findings.contains(where: { $0.severity == .warning }) {
+                verdict = .warning
+            }
         }
 
         let crossTarget = collectCrossTargetForensics(
@@ -1457,10 +1649,13 @@ public enum ForensicScanner {
         let isQuarantined = hasQuarantineAttribute(at: path)
 
         var (sig, codesignOut) = parseSignature(for: path, cancellation: cancellation)
-        let verifyResult = runTool("/usr/bin/codesign", args: ["--verify", "--no-strict", path], cancellation: cancellation)
-        if verifyResult.output.contains("code object is not signed at all") {
-            sig.isUnsigned = true
-        }
+        let verification = verifyCodeSignature(
+            at: path,
+            isUnsigned: sig.isUnsigned,
+            timeoutSeconds: bundleVerifyTimeoutSeconds,
+            cancellation: cancellation
+        )
+        sig.isUnsigned = verification.isUnsigned
 
         var findings: [ForensicFinding] = []
         var verdict: IntegrityVerdict
@@ -1483,9 +1678,15 @@ public enum ForensicScanner {
                 descKey: .findingUnofficialAuthorityDesc,
                 detailSuffix: sig.authorities.joined(separator: " → ")
             ))
-        } else if verifyResult.exitCode != 0 && cancellation?.isCancelled != true {
+        } else if case .timedOut = verification.outcome {
+            verdict = .warning
+            gatekeeperStatus = verification.gatekeeperStatus
+            appendVerificationFindings(verification.outcome, findings: &findings)
+        } else if case .failed(let errDetail) = verification.outcome, cancellation?.isCancelled != true {
             verdict = .tampered
-            let errText = verifyResult.output.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: " | ")
+            let errText = errDetail.isEmpty
+                ? verification.gatekeeperStatus
+                : errDetail.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: " | ")
             gatekeeperStatus = errText
             findings.append(ForensicFinding(
                 severity: .critical,
@@ -1493,6 +1694,9 @@ public enum ForensicScanner {
                 descKey: .findingDmgBrokenDetail,
                 detailSuffix: errText
             ))
+        } else if verification.outcome == .cancelled || cancellation?.isCancelled == true {
+            verdict = .clean
+            gatekeeperStatus = "Cancelled"
         } else {
             verdict = .clean
             gatekeeperStatus = "codesign --verify: OK (Valid on disk)"
@@ -1515,9 +1719,13 @@ public enum ForensicScanner {
             verdict = .tampered
         }
 
-        var spctlResult: (accepted: Bool, statusText: String)?
+        var spctlResult: (accepted: Bool, timedOut: Bool, statusText: String)?
         if options.includeGatekeeperAssessment && !sig.isUnsigned && cancellation?.isCancelled != true {
-            spctlResult = assessGatekeeper(at: path, type: "open", cancellation: cancellation)
+            spctlResult = assessGatekeeperDetailed(at: path, type: "open", cancellation: cancellation)
+            appendGatekeeperFindings(spctlResult, warnOnRejection: false, cancellation: cancellation, findings: &findings)
+            if verdict == .clean && findings.contains(where: { $0.severity == .warning }) {
+                verdict = .warning
+            }
         }
 
         let crossTarget = collectCrossTargetForensics(
@@ -1558,6 +1766,7 @@ public enum ForensicScanner {
             lcRpaths: [],
             teamIdentifier: sig.teamId,
             authorities: resolvedAuths,
+            isDevelopmentSigned: sig.isDevelopmentCertificate,
             signedTimestamp: sig.signedTime,
             hasHardenedRuntime: sig.hasHardenedRuntime,
             isNotarized: sig.isNotarized,
@@ -1603,19 +1812,14 @@ public enum ForensicScanner {
         let execSHA = digests.sha256
         let execSHA512 = digests.sha512
         let entitlementData = parseEntitlements(for: path, cancellation: cancellation)
-        let verifyResult = runTool("/usr/bin/codesign", args: ["--verify", "--no-strict", path], cancellation: cancellation)
-        if verifyResult.output.contains("code object is not signed at all") {
-            sig.isUnsigned = true
-        }
-
-        let gatekeeperStatus: String
-        if sig.isUnsigned {
-            gatekeeperStatus = "Unsigned (Local Developer Build)"
-        } else if verifyResult.exitCode == 0 {
-            gatekeeperStatus = "codesign --verify: OK (Valid on disk)"
-        } else {
-            gatekeeperStatus = verifyResult.output.components(separatedBy: .newlines).filter { !$0.isEmpty }.joined(separator: " | ")
-        }
+        let verification = verifyCodeSignature(
+            at: path,
+            isUnsigned: sig.isUnsigned,
+            timeoutSeconds: executableVerifyTimeoutSeconds,
+            cancellation: cancellation
+        )
+        sig.isUnsigned = verification.isUnsigned
+        let gatekeeperStatus = verification.gatekeeperStatus
 
         let otoolOut = cancellation?.isCancelled != true
             ? runTool("/usr/bin/otool", args: ["-L", path], cancellation: cancellation).output
@@ -1688,15 +1892,8 @@ public enum ForensicScanner {
                 detailSuffix: sig.authorities.joined(separator: " → ")
             ))
         }
-        if !sig.isUnsigned && verifyResult.exitCode != 0 && !verifyResult.output.isEmpty && cancellation?.isCancelled != true {
-            findings.append(ForensicFinding(
-                severity: .critical,
-                titleKey: .findingVerifyFailedTitle,
-                descKey: .findingVerifyFailedDesc,
-                detailSuffix: verifyResult.output.trimmingCharacters(in: .whitespacesAndNewlines)
-            ))
-        }
-        if isInjectedMachO {
+        appendVerificationFindings(verification.outcome, findings: &findings)
+        if isInjectedMachO && isDylibExt {
             findings.append(ForensicFinding(
                 severity: .critical,
                 titleKey: .findingInjectedDylibTitle,
@@ -1721,17 +1918,15 @@ public enum ForensicScanner {
             ))
         }
 
-        var spctlResult: (accepted: Bool, statusText: String)?
+        var spctlResult: (accepted: Bool, timedOut: Bool, statusText: String)?
         if options.includeGatekeeperAssessment && cancellation?.isCancelled != true {
-            spctlResult = assessGatekeeper(at: path, cancellation: cancellation)
-            if let spctlResult, !spctlResult.accepted && (sig.hasOfficialAppleChain || !sig.authorities.isEmpty) {
-                findings.append(ForensicFinding(
-                    severity: .warning,
-                    titleKey: .findingSpctlRejectedTitle,
-                    descKey: .findingSpctlRejectedDesc,
-                    detailSuffix: spctlResult.statusText
-                ))
-            }
+            spctlResult = assessGatekeeperDetailed(at: path, cancellation: cancellation)
+            appendGatekeeperFindings(
+                spctlResult,
+                warnOnRejection: sig.hasOfficialAppleChain || !sig.authorities.isEmpty,
+                cancellation: cancellation,
+                findings: &findings
+            )
         }
 
         let revocationStatus = evaluateRevocationStatus(
@@ -1805,6 +2000,7 @@ public enum ForensicScanner {
             lcRpaths: rawRpaths,
             teamIdentifier: sig.teamId,
             authorities: resolvedAuths,
+            isDevelopmentSigned: sig.isDevelopmentCertificate,
             signedTimestamp: sig.signedTime,
             hasHardenedRuntime: sig.hasHardenedRuntime,
             isNotarized: sig.isNotarized,
@@ -1932,11 +2128,7 @@ public enum ForensicScanner {
 
     /// Verilen klasör içindeki toplu denetlenebilir öğeleri (`.app`, `.dmg`, `.pkg`, `.mpkg`) alfabetik sırada döndürür.
     public static func batchTargets(in directoryURL: URL) -> [URL] {
-        let entries = (try? FileManager.default.contentsOfDirectory(
-            at: directoryURL,
-            includingPropertiesForKeys: nil,
-            options: [.skipsHiddenFiles]
-        )) ?? []
+        let entries = (DirectoryEntries.list(at: directoryURL, includeHidden: false) ?? []).map(\.url)
         return entries
             .filter { batchAuditableExtensions.contains($0.pathExtension.lowercased()) }
             .sorted { $0.lastPathComponent.localizedCaseInsensitiveCompare($1.lastPathComponent) == .orderedAscending }
@@ -2166,7 +2358,7 @@ public enum ForensicScanner {
         cancellation: ScanCancellationToken? = nil
     ) -> (output: String, exitCode: Int32) {
         if cancellation?.isCancelled == true {
-            return ("Cancelled", -2)
+            return ("Cancelled", cancelledToolExitCode)
         }
 
         let process = Process()
@@ -2189,7 +2381,7 @@ public enum ForensicScanner {
 
         guard cancellation?.attach(process) ?? true else {
             if process.isRunning { process.terminate() }
-            return ("Cancelled", -2)
+            return ("Cancelled", cancelledToolExitCode)
         }
         defer { cancellation?.detach(process) }
 
@@ -2201,7 +2393,7 @@ public enum ForensicScanner {
                 process.terminate()
             }
         }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeoutSeconds, execute: timeoutItem)
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + timeoutSeconds, execute: timeoutItem)
 
         let reader = pipe.fileHandleForReading
         var buffer = Data()
@@ -2231,8 +2423,14 @@ public enum ForensicScanner {
 
         let wasTimedOut = stateLock.withLock { timedOut }
         let text = String(decoding: buffer, as: UTF8.self)
+        if cancellation?.isCancelled == true {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (trimmed.isEmpty ? "Cancelled" : text, cancelledToolExitCode)
+        }
         if wasTimedOut {
-            return (text.isEmpty ? "Process timed out after \(Int(timeoutSeconds))s" : text, -3)
+            let timeoutMsg = "Process timed out after \(Int(timeoutSeconds))s"
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (trimmed.isEmpty ? timeoutMsg : "\(timeoutMsg): \(trimmed)", timedOutToolExitCode)
         }
         return (text, process.terminationStatus)
     }

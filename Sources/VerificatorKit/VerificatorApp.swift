@@ -52,6 +52,59 @@ public struct VerificatorApp: App {
                 .environment(settings)
                 .environment(\.locale, settings.locale)
         }
+
+        MenuBarExtra(
+            settings.t(.appName),
+            systemImage: "shield.lefthalf.filled.badge.checkmark",
+            isInserted: Binding(
+                get: { settings.showMenuBarExtra },
+                set: { settings.showMenuBarExtra = $0 }
+            )
+        ) {
+            MenuBarExtraMenuView()
+                .environment(model)
+                .environment(settings)
+                .environment(\.locale, settings.locale)
+        }
+    }
+}
+
+private struct MenuBarExtraMenuView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(AppSettings.self) private var settings
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button(settings.t(.menuBarOpenVerificator)) {
+            openWindow(id: WindowID.main)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+        }
+        Button(settings.t(.menuBarScanApp)) {
+            openWindow(id: WindowID.main)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            model.presentOpenPanel()
+        }
+        Button(settings.t(.menuSystemPosture)) {
+            openWindow(id: WindowID.main)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+            model.openSystemPostureMode(startImmediately: true)
+        }
+        Divider()
+        Text(settings.t(model.watchedFolderService.isRunning ? .menuBarWatchedActive : .menuBarWatchedPaused))
+        if let lastTarget = model.watchedFolderService.lastAuditedTarget {
+            Text(settings.t(.menuBarLastStatus) + ": \(lastTarget)")
+        }
+        if !settings.watchedFolderPaths.isEmpty {
+            Button(settings.t(.watchedScanNow)) {
+                model.triggerWatchedFolderScanNow()
+            }
+            .disabled(model.watchedFolderService.isScanningNow)
+        }
+        Divider()
+        Button(settings.t(.menuBarQuit)) {
+            NSApplication.shared.terminate(nil)
+        }
+        .keyboardShortcut("q", modifiers: [.command])
     }
 }
 
@@ -174,7 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        !(AppSettings.shared.showMenuBarExtra || AppSettings.shared.watchedFolderEnabled)
     }
 }
 
@@ -222,6 +275,12 @@ struct AppCommands: Commands {
                 model.openPersistenceMode(startImmediately: true)
             }
             .keyboardShortcut("t", modifiers: [.command, .option])
+
+            Button(settings.t(.menuSystemPosture)) {
+                openWindow(id: WindowID.main)
+                model.openSystemPostureMode(startImmediately: true)
+            }
+            .keyboardShortcut("g", modifiers: [.command, .option])
 
             let refreshShortcut = settings.shortcut(for: .refresh)
             Button(settings.t(.menuRefreshScan)) {
@@ -300,6 +359,11 @@ struct AppCommands: Commands {
             .disabled(settings.recentBundles.isEmpty)
 
             Divider()
+
+            Button(settings.t(.diagnosticsButtonTitle)) {
+                openWindow(id: WindowID.main)
+                model.openDiagnosticReportSheet()
+            }
 
             Button(settings.t(.menuInstallCLI)) {
                 model.copyCLIInstallCommand()

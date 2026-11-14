@@ -53,7 +53,13 @@
   - [x] Little Snitch `InternetAccessPolicy.plist` / `.strings` parser (nested depth < 4) plus Verificator's own bundled trilingual `Resources/InternetAccessPolicy.{plist,strings}`.
   - [x] Per-export salted PII masker (`DiagnosticMasker`, `redactSharedDiagnostics`, CLI `--redact`), unencrypted removable-media detector (`VolumeEncryptionInfo`), Dock batch progress bar (`DockProgress`), and deterministic `SplitMix64` `FuzzTests`.
 - [x] **macOS System Integration**:
-  - [x] Finder `NSServices` (`auditServiceItem`), expanded `CFBundleDocumentTypes`, `verificator://` URL scheme (`CFBundleURLTypes`), Shortcuts/Spotlight `AppIntents` (`VerificatorIntents`), and copyable `verificator-cli` install helper in Settings & menu bar.
+  - [x] Finder `NSServices` (`auditServiceItem`), expanded `CFBundleDocumentTypes`, `verificator://` URL scheme (`verificator://posture`, `verificator://diff`), Shortcuts/Spotlight `AppIntents` (`VerificatorIntents`), and copyable `verificator-cli` install helper in Settings & menu bar.
+- [x] **v1.3.0 Security, Kernel Sockets, System Posture, Enterprise & Integration Wave**:
+  - [x] `KernelSocketList` live TCP/UDP socket correlation via `pcblist_n` & Darwin `libproc` fallback (`--running`, `RunningProcessesAuditView` `Sockets` filter).
+  - [x] `DirectoryEntries` (`opendir`/`readdir`/`lstat`), `AppleDoubleDetector` (`0x00051607` sidecars ignored, disguised `._*` binaries flagged), `BundleSymlinkAudit` (`(st_dev, st_ino)` loops + `realpath` escapes), and JIT W^X standalone binary calibration.
+  - [x] Informational Apple Development certificate pill (`isDevelopmentSigned` / `isDevelopmentCertificateSummary`) and `ManagedConfiguration` enterprise MDM preference locking (`UserDefaults.objectIsForced(forKey:)`).
+  - [x] `WatchedFolderService` opt-in folder monitor (`default OFF`), conditional `MenuBarExtra` (`showMenuBarExtra`, `default OFF`), Launch at Login (`SMAppService.mainApp`), `NotificationService`, and proactive `SignatureChangeAlertSheet`.
+  - [x] `SettingsTransfer` portable JSON Export/Import (`~/` home path compression/expansion, MDM respect, `SignatureTracker.merge`), `DiagnosticReportBuilder` + `DiagnosticSheet` anonymized Markdown diagnostics, and `SystemSecurityPostureAuditor` + `SystemPostureAuditView` (`⌥⌘G`, `--posture`, `verificator://posture`) including read-only orphaned `/private/var/db/receipts` audit.
 
 ## Completed Milestones (v1.2.0 — 2026-11-13)
 

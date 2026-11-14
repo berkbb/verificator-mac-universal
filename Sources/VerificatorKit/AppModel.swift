@@ -31,6 +31,7 @@ public final class AppModel {
         case diff
         case runningProcesses
         case persistence
+        case systemPosture
     }
 
     public var workspaceMode: AuditWorkspaceMode = .single
@@ -84,8 +85,20 @@ public final class AppModel {
     public var firewallStatus: FirewallStatus?
     public var bootVolumeEncryption: VolumeEncryptionInfo?
     public var isFullDiskAccessGranted: Bool = FullDiskAccess.isGranted
+    public var systemPosture: SystemSecurityPosture?
+    public var isScanningPosture = false
     public var signatureChange: SignatureBaselineChange?
+    public var signatureChangeModal: SignatureBaselineChange?
+    public var signatureChangeModalReport: BundleAuditReport?
     public var expectedChecksumInput = ""
+
+    // MARK: - Sistem Entegrasyonu, İzlenen Klasörler, Teşhis & Aktarım
+    public let notificationService = NotificationService()
+    public let loginItemService = LoginItemService()
+    public let watchedFolderService = WatchedFolderService()
+    public var showDiagnosticSheet = false
+    public var diagnosticPreviewMarkdown = ""
+    public var transferFeedback: (text: String, isSuccess: Bool)?
 
     public enum ChecksumUIEvaluation: Equatable, Sendable {
         case empty
@@ -122,6 +135,7 @@ public final class AppModel {
     @ObservationIgnored private var activeRunningToken: ScanCancellationToken?
     @ObservationIgnored private var activePersistenceTask: Task<Void, Never>?
     @ObservationIgnored private var activePersistenceToken: ScanCancellationToken?
+    @ObservationIgnored private var activePostureTask: Task<Void, Never>?
     @ObservationIgnored private var activeAITask: Task<Void, Never>?
 
     @ObservationIgnored private let settings: AppSettings
@@ -143,6 +157,9 @@ public final class AppModel {
         settings.applyAppearance()
         refreshTools()
         refreshSystemSecurityStatus()
+        loginItemService.refresh()
+        await notificationService.refreshAuthorizationStatus()
+        configureWatchedFolders()
         AppLog.shared.info(.app, "Verificator \(AppInfo.version) (\(AppInfo.build)) launched")
         if settings.aiSuggestions {
             await refreshLocalModels()
@@ -154,6 +171,10 @@ public final class AppModel {
 
     public func refreshSystemSecurityStatus() {
         isFullDiskAccessGranted = FullDiskAccess.isGranted
+        loginItemService.refresh()
+        Task { @MainActor [weak self] in
+            await self?.notificationService.refreshAuthorizationStatus()
+        }
         Task.detached { [weak self] in
             let status = GatekeeperStatus.read()
             let fwStatus = ApplicationFirewall.readSystemStatus()
@@ -212,18 +233,41 @@ public final class AppModel {
         let change = signatureTracker.observe(report: report)
         if emitBanner {
             signatureChange = change
+            if let change, change.kind == .signerChanged || change.kind == .lostSignature {
+                signatureChangeModal = change
+                signatureChangeModalReport = report
+            }
         }
         try? signatureStore.save(signatureTracker)
     }
 
     public func acknowledgeSignatureBaselineChange() {
-        guard let report else {
+        let targetReport = signatureChangeModalReport ?? report
+        guard let targetReport else {
             signatureChange = nil
+            signatureChangeModal = nil
+            signatureChangeModalReport = nil
             return
         }
-        signatureTracker.acceptBaseline(for: report)
+        signatureTracker.acceptBaseline(for: targetReport)
         try? signatureStore.save(signatureTracker)
         signatureChange = nil
+        signatureChangeModal = nil
+        signatureChangeModalReport = nil
+    }
+
+    public func dismissSignatureChangeModal() {
+        signatureChangeModal = nil
+    }
+
+    public func inspectSignatureChangeModal() {
+        let targetReport = signatureChangeModalReport
+        signatureChangeModal = nil
+        guard let targetReport else { return }
+        workspaceMode = .single
+        currentBundleURL = URL(fileURLWithPath: targetReport.bundlePath)
+        cachedReports[targetReport.bundlePath] = targetReport
+        report = targetReport
     }
 
     public func refreshTools() {
@@ -291,6 +335,8 @@ public final class AppModel {
             quarantineFeedback = nil
             aiSummaryError = nil
             signatureChange = nil
+            signatureChangeModal = nil
+            signatureChangeModalReport = nil
             expectedChecksumInput = ""
         }
         currentBundleURL = resolved
@@ -364,6 +410,8 @@ public final class AppModel {
         quarantineFeedback = nil
         aiSummaryError = nil
         signatureChange = nil
+        signatureChangeModal = nil
+        signatureChangeModalReport = nil
         expectedChecksumInput = ""
     }
 
@@ -377,6 +425,14 @@ public final class AppModel {
         cancelBatchScan()
         cancelRunningProcessesScan()
         cancelPersistenceScan()
+        activePostureTask?.cancel()
+        activePostureTask = nil
+        isScanningPosture = false
+        systemPosture = nil
+        signatureChangeModal = nil
+        signatureChangeModalReport = nil
+        transferFeedback = nil
+        watchedFolderService.stop()
         activeDiffToken?.cancel()
         activeDiffTask?.cancel()
         isComparingDiff = false
@@ -394,6 +450,7 @@ public final class AppModel {
         aiChecks = []
         updateDownloadState = .idle
         settings.resetAll()
+        configureWatchedFolders()
         updateSuggestionModel()
         refreshTools()
     }
@@ -560,6 +617,7 @@ public final class AppModel {
         md += "- **\(settings.t(.fieldResourcesDate)):** `\(r.plistModDate)`\n"
         md += "- **\(settings.t(.fieldExecutableDate)):** `\(r.executableModDate)`\n"
         md += "- **\(settings.t(.fieldTeamId)):** `\(teamText)`\n"
+        md += "- **\(settings.t(.fieldSigningProfile)):** `\(settings.t(signingProfileKey(for: r)))`\n"
         md += "- **\(settings.t(.fieldAuthorities)):** `\(authoritiesText)`\n"
         md += "- **\(settings.t(.fieldSignedTime)):** `\(r.signedTimestamp)`\n"
         md += "- **\(settings.t(.fieldHardenedRuntime)):** `\(settings.t(r.hasHardenedRuntime ? .valueEnabled : .valueDisabled))`\n"
@@ -903,6 +961,259 @@ public final class AppModel {
         scan(url)
     }
 
+    // MARK: - Sistem Güvenlik Durumu & Yetim Paket Fişleri (System Posture)
+
+    public func openSystemPostureMode(startImmediately: Bool = false) {
+        workspaceMode = .systemPosture
+        if startImmediately || (systemPosture == nil && !isScanningPosture) {
+            refreshSystemPosture()
+        }
+    }
+
+    public func refreshSystemPosture() {
+        activePostureTask?.cancel()
+        isScanningPosture = true
+        activePostureTask = Task.detached { [weak self] in
+            let posture = SystemSecurityPostureAuditor.collect()
+            await MainActor.run {
+                guard let self, !Task.isCancelled else { return }
+                self.systemPosture = posture
+                self.isScanningPosture = false
+                self.isFullDiskAccessGranted = posture.fullDiskAccessGranted
+                self.activePostureTask = nil
+                AppLog.shared.info(
+                    .scanner,
+                    "System security posture audited",
+                    detail: "SIP=\(posture.sipStatus.rawValue), SSV=\(posture.ssvStatus.rawValue), Orphans=\(posture.orphanedReceipts.count)"
+                )
+            }
+        }
+    }
+
+    public func copyForgetCommand(_ command: String) {
+        copyTextToClipboard(command)
+    }
+
+    public func signingProfileKey(for report: BundleAuditReport) -> LKey {
+        if report.isDevelopmentSigned { return .signingProfileDevCert }
+        if report.authorities.contains(where: { $0.contains("Developer ID") }) { return .signingProfileDeveloperID }
+        if report.authorities.contains(where: { $0.contains("Mac App Store") || $0.contains("Apple Mac OS Application Signing") }) {
+            return .signingProfileAppStore
+        }
+        if report.authorities == ["Software Signing", "Apple Code Signing Certification Authority", "Apple Root CA"]
+            || (report.authorities.contains(where: { $0 == "Software Signing" }) && report.authorities.contains(where: { $0 == "Apple Root CA" })) {
+            return .signingProfileAppleSystem
+        }
+        if report.authorities == ["Ad-Hoc"] { return .signingProfileAdhoc }
+        if report.authorities.isEmpty { return .signingProfileUnsigned }
+        return .signingProfileCustom
+    }
+
+    // MARK: - İzlenen Klasörler, Teşhis Raporu & Ayar Aktarımı
+
+    public func configureWatchedFolders() {
+        watchedFolderService.configure(
+            enabled: settings.watchedFolderEnabled,
+            folderPaths: settings.watchedFolderPaths,
+            scanOptions: { [weak self] in self?.settings.scanOptions ?? ScanOptions() },
+            onReport: { [weak self] audited in
+                self?.handleWatchedFolderReport(audited)
+            }
+        )
+    }
+
+    public func triggerWatchedFolderScanNow() {
+        watchedFolderService.scanNow(
+            folderPaths: settings.watchedFolderPaths,
+            scanOptions: settings.scanOptions
+        ) { [weak self] audited in
+            self?.handleWatchedFolderReport(audited)
+        }
+    }
+
+    public func addWatchedFolderViaPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = true
+        panel.treatsFilePackagesAsDirectories = false
+        panel.directoryURL = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+        if panel.runModal() == .OK {
+            for url in panel.urls {
+                settings.addWatchedFolder(url.path)
+            }
+            configureWatchedFolders()
+        }
+    }
+
+    private func handleWatchedFolderReport(_ audited: BundleAuditReport) {
+        cachedReports[audited.bundlePath] = audited
+        let change = signatureTracker.observe(report: audited)
+        try? signatureStore.save(signatureTracker)
+
+        if let change, change.kind == .signerChanged || change.kind == .lostSignature {
+            signatureChange = change
+            signatureChangeModal = change
+            signatureChangeModalReport = audited
+            let title = settings.t(.notificationSigChangeTitle, audited.bundleName)
+            let body = settings.t(.notificationSigChangeBody, change.previousSignerDisplay, change.currentSignerDisplay)
+            AppLog.shared.warning(.signature, "Watched folder detected signer change for \(audited.bundleName)")
+            Task { @MainActor in
+                await notificationService.postAlert(
+                    identifier: "sigchange-\(audited.bundleId)",
+                    title: title,
+                    body: body,
+                    bundlePath: audited.bundlePath
+                )
+            }
+            return
+        }
+
+        if audited.verdict != .clean {
+            let verdictLabel = settings.t(audited.verdict == .tampered ? .verdictTampered : .verdictWarning)
+            let title = settings.t(.notificationWatchedIssueTitle, audited.bundleName)
+            let body = settings.t(.notificationWatchedIssueBody, audited.bundleName, verdictLabel)
+            AppLog.shared.warning(.scanner, "Watched folder flagged \(audited.bundleName) as \(audited.verdict.rawValue)")
+            Task { @MainActor in
+                await notificationService.postAlert(
+                    identifier: "watch-\(UUID().uuidString)",
+                    title: title,
+                    body: body,
+                    bundlePath: audited.bundlePath
+                )
+            }
+        }
+    }
+
+    public func buildDiagnosticReportMarkdown() -> String {
+        let recentEntries = LogStore.shared.entries.suffix(60)
+        let logLines = recentEntries.map { entry in
+            let level = entry.level.rawValue.uppercased()
+            let cat = entry.category.rawValue
+            let detail = entry.detail.map { " (\($0))" } ?? ""
+            return "[\(entry.date.formatted(.iso8601))] [\(level)/\(cat)] \(entry.message)\(detail)"
+        }
+        let extraLines = [
+            "Gatekeeper: \(gatekeeperStatus.rawValue)",
+            "Full Disk Access: \(isFullDiskAccessGranted ? "granted" : "missing")",
+            "Watched Folders Enabled: \(settings.watchedFolderEnabled) (\(settings.watchedFolderPaths.count) paths)",
+            "Menu Bar Extra: \(settings.showMenuBarExtra)",
+            "Launch at Login: \(loginItemService.isEnabled) (needsApproval=\(loginItemService.needsApproval))",
+            "Notifications State: \(notificationService.authState.rawValue)",
+        ]
+        return DiagnosticReportBuilder.buildMarkdown(
+            from: DiagnosticReportInput(
+                appVersion: AppInfo.version,
+                appBuild: AppInfo.build,
+                languageCode: settings.languageCode,
+                activeReport: report,
+                systemPosture: systemPosture,
+                managedKeys: Array(settings.managedKeys).sorted(),
+                logLines: logLines,
+                extraSectionLines: extraLines
+            )
+        )
+    }
+
+    public func openDiagnosticReportSheet() {
+        diagnosticPreviewMarkdown = buildDiagnosticReportMarkdown()
+        showDiagnosticSheet = true
+        if systemPosture == nil && !isScanningPosture {
+            Task.detached { [weak self] in
+                let posture = SystemSecurityPostureAuditor.collect()
+                await MainActor.run {
+                    guard let self else { return }
+                    self.systemPosture = posture
+                    self.diagnosticPreviewMarkdown = self.buildDiagnosticReportMarkdown()
+                }
+            }
+        }
+    }
+
+    public func copyDiagnosticReportToClipboard() {
+        let content = diagnosticPreviewMarkdown.isEmpty ? buildDiagnosticReportMarkdown() : diagnosticPreviewMarkdown
+        copyTextToClipboard(content)
+    }
+
+    public func saveDiagnosticReportToFile() {
+        let content = diagnosticPreviewMarkdown.isEmpty ? buildDiagnosticReportMarkdown() : diagnosticPreviewMarkdown
+        presentExportSavePanel(
+            defaultName: "\(settings.t(.diagnosticsDefaultFileName)).md",
+            allowedTypes: [.plainText],
+            data: Data(content.utf8)
+        )
+    }
+
+    public func exportPortableSettingsViaPanel() {
+        do {
+            let data = try settings.exportPortableSettingsData(tracker: signatureTracker)
+            presentExportSavePanel(
+                defaultName: "Verificator-Settings.json",
+                allowedTypes: [.json],
+                data: data
+            )
+        } catch {
+            transferFeedback = (text: settings.t(.settingsImportFailedFormat, error.localizedDescription), isSuccess: false)
+        }
+    }
+
+    public func importPortableSettingsViaPanel() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = true
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.json]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            let data = try Data(contentsOf: url)
+            _ = importPortableSettings(from: data)
+        } catch {
+            transferFeedback = (text: settings.t(.settingsImportFailedFormat, error.localizedDescription), isSuccess: false)
+        }
+    }
+
+    @discardableResult
+    public func importPortableSettings(
+        from data: Data,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser
+    ) -> Bool {
+        do {
+            let outcome = try settings.applyPortableImportData(data, home: home) { incoming in
+                let count = signatureTracker.merge(entries: incoming)
+                try? signatureStore.save(signatureTracker)
+                return count
+            }
+            configureWatchedFolders()
+            updateSuggestionModel()
+            transferFeedback = (
+                text: settings.t(
+                    .settingsImportSuccessFormat,
+                    outcome.appliedPreferenceKeys.count,
+                    outcome.importedBaselinesCount,
+                    outcome.importedWatchedFoldersCount
+                ),
+                isSuccess: true
+            )
+            AppLog.shared.info(
+                .app,
+                "Imported portable settings bundle",
+                detail: "prefs=\(outcome.appliedPreferenceKeys.count), baselines=\(outcome.importedBaselinesCount), skippedMDM=\(outcome.skippedManagedKeys.count)"
+            )
+            return true
+        } catch let failure as SettingsTransferFailure {
+            let msg: String = switch failure {
+            case .tooLarge: settings.t(.settingsImportTooLarge)
+            case .malformedOrWrongFormat: settings.t(.settingsImportWrongFormat)
+            case .unsupportedVersion(let version): settings.t(.settingsImportUnsupportedVersionFormat, version)
+            }
+            transferFeedback = (text: msg, isSuccess: false)
+            return false
+        } catch {
+            transferFeedback = (text: settings.t(.settingsImportFailedFormat, error.localizedDescription), isSuccess: false)
+            return false
+        }
+    }
+
     // MARK: - macOS Sistem Entegrasyonu (URL Scheme, Services & CLI)
 
     public var embeddedCLIPath: String {
@@ -1045,6 +1356,9 @@ public final class AppModel {
 
         case "persistence", "launchagents":
             openPersistenceMode(startImmediately: true)
+
+        case "posture", "security":
+            openSystemPostureMode(startImmediately: true)
 
         default:
             AppLog.shared.warning(.app, settings.t(.urlSchemeInvalidError), detail: url.absoluteString)

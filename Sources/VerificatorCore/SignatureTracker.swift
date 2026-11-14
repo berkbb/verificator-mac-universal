@@ -142,6 +142,22 @@ public struct SignatureTracker: Codable, Equatable, Sendable {
         insert(baseline, for: key)
     }
 
+    /// Merges imported trusted baselines (keeping newer timestamps when paths already exist) and enforces `entryLimit`.
+    @discardableResult
+    public mutating func merge(entries incoming: [String: SeenSignatureBaseline]) -> Int {
+        var mergedCount = 0
+        for (rawPath, candidate) in incoming {
+            let key = URL(fileURLWithPath: rawPath).standardizedFileURL.path
+            guard !key.isEmpty else { continue }
+            if let existing = entries[key], existing.lastSeen >= candidate.lastSeen {
+                continue
+            }
+            insert(candidate, for: key)
+            mergedCount += 1
+        }
+        return mergedCount
+    }
+
     private static func nonPlaceholderAuthorities(_ authorities: [String]) -> [String] {
         authorities.filter { authority in
             let lower = authority.lowercased()

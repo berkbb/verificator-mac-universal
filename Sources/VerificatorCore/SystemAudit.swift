@@ -120,6 +120,7 @@ public struct RunningProcessItem: Identifiable, Sendable, Equatable, Codable {
     public let parentName: String?
     public let dynamicSignatureMismatch: Bool
     public let unsignedMappedLibraries: [String]
+    public let networkSockets: [ProcessSocketInfo]
     public let verdict: IntegrityVerdict
     public let findings: [ForensicFinding]
 
@@ -142,6 +143,7 @@ public struct RunningProcessItem: Identifiable, Sendable, Equatable, Codable {
         parentName: String? = nil,
         dynamicSignatureMismatch: Bool = false,
         unsignedMappedLibraries: [String] = [],
+        networkSockets: [ProcessSocketInfo] = [],
         verdict: IntegrityVerdict,
         findings: [ForensicFinding]
     ) {
@@ -160,6 +162,7 @@ public struct RunningProcessItem: Identifiable, Sendable, Equatable, Codable {
         self.parentName = parentName
         self.dynamicSignatureMismatch = dynamicSignatureMismatch
         self.unsignedMappedLibraries = unsignedMappedLibraries
+        self.networkSockets = networkSockets
         self.verdict = verdict
         self.findings = findings
     }
@@ -168,7 +171,7 @@ public struct RunningProcessItem: Identifiable, Sendable, Equatable, Codable {
         case id, pid, name, executablePath, bundlePath, teamIdentifier, authorities,
              hasOfficialAppleChain, isQuarantined, dyldInsertLibraries, envReadable,
              parentPid, parentName, dynamicSignatureMismatch, unsignedMappedLibraries,
-             verdict, findings
+             networkSockets, verdict, findings
     }
 
     public init(from decoder: Decoder) throws {
@@ -189,6 +192,7 @@ public struct RunningProcessItem: Identifiable, Sendable, Equatable, Codable {
         self.parentName = try container.decodeIfPresent(String.self, forKey: .parentName)
         self.dynamicSignatureMismatch = try container.decodeIfPresent(Bool.self, forKey: .dynamicSignatureMismatch) ?? false
         self.unsignedMappedLibraries = try container.decodeIfPresent([String].self, forKey: .unsignedMappedLibraries) ?? []
+        self.networkSockets = try container.decodeIfPresent([ProcessSocketInfo].self, forKey: .networkSockets) ?? []
         self.verdict = try container.decode(IntegrityVerdict.self, forKey: .verdict)
         self.findings = try container.decode([ForensicFinding].self, forKey: .findings)
     }
@@ -204,6 +208,14 @@ public struct RunningProcessesAuditSummary: Sendable, Equatable, Codable {
     public let uniqueBinariesCount: Int
     public let wasCancelled: Bool
     public let items: [RunningProcessItem]
+
+    public var processesWithSocketsCount: Int {
+        items.filter { !$0.networkSockets.isEmpty }.count
+    }
+
+    public var listeningSocketsCount: Int {
+        items.reduce(0) { $0 + $1.networkSockets.filter(\.isListening).count }
+    }
 
     public init(
         scannedAt: String,
@@ -265,17 +277,17 @@ public enum SystemAudit {
 
         var entries: [(scope: PersistenceScope, url: URL)] = []
         for (scope, dirURL) in dirs {
-            guard let contents = try? fm.contentsOfDirectory(
-                at: dirURL,
-                includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles]
-            ) else { continue }
-            for fileURL in contents.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            guard let rawEntries = DirectoryEntries.list(at: dirURL, includeHidden: true) else { continue }
+            for entry in rawEntries {
+                let fileName = entry.name
+                if fileName == ".DS_Store" || fileName == ".localized" { continue }
+                if fileName.hasPrefix("._") && AppleDoubleDetector.isAppleDoubleMagic(at: entry.url) { continue }
+                let fileURL = entry.url
                 if scope == .privilegedHelper {
                     var isDir: ObjCBool = false
                     guard fm.fileExists(atPath: fileURL.path, isDirectory: &isDir), !isDir.boolValue else { continue }
                     entries.append((scope, fileURL))
-                } else if fileURL.pathExtension.lowercased() == "plist" {
+                } else if fileName.lowercased().hasSuffix(".plist") {
                     entries.append((scope, fileURL))
                 }
             }
@@ -511,7 +523,7 @@ public enum SystemAudit {
     public static func auditRunningProcesses(
         options: ScanOptions = ScanOptions(),
         cancellation: ScanCancellationToken? = nil,
-        maxConcurrentExecScans: Int = 4,
+        maxConcurrentExecScans: Int = 8,
         onProgress: (@Sendable (_ index: Int, _ total: Int, _ processName: String) -> Void)? = nil
     ) -> RunningProcessesAuditSummary {
         let rawProcesses = enumerateProcesses()
@@ -570,109 +582,150 @@ public enum SystemAudit {
         }
         group.wait()
 
-        var items: [RunningProcessItem] = []
-        items.reserveCapacity(rawProcesses.count)
+        let socketsByPid = cancellation?.isCancelled == true
+            ? [:]
+            : KernelSocketList.socketsByPID(forPids: rawProcesses.map(\.pid))
 
-        for proc in rawProcesses {
-            if cancellation?.isCancelled == true { break }
-            let stdPath = URL(fileURLWithPath: proc.executablePath).standardizedFileURL.path
-            let baseline = cacheBox.lookup(stdPath) ?? BinaryForensicBaseline(
-                teamIdentifier: "not set",
-                authorities: [],
-                hasOfficialAppleChain: false,
-                isAdhoc: false,
-                isUnsigned: true,
-                isQuarantined: false,
-                isMachO: false,
-                verdict: .warning,
-                findings: []
-            )
-            let enclosingApp = enclosingAppBundlePath(forExecutablePath: proc.executablePath)
-            let parentInfo = LiveProcessInspector.parentProcess(of: proc.pid)
-            let liveVerification = LiveProcessInspector.verifyLiveProcess(
-                pid: proc.pid,
-                executablePath: proc.executablePath,
-                parentHasOfficialChain: baseline.hasOfficialAppleChain,
-                isParentAdhoc: baseline.isAdhoc
-            )
+        final class ProcessResultBox: @unchecked Sendable {
+            private let lock = NSLock()
+            private var cursor = 0
+            private var collected: [RunningProcessItem] = []
 
-            var findings = baseline.findings
-            if !proc.dyldInsertLibraries.isEmpty {
-                findings.insert(
-                    ForensicFinding(
-                        severity: .critical,
-                        titleKey: .persistencePlistDyldEnv,
-                        descKey: .runningDyldEnvDetected,
-                        detailSuffix: proc.dyldInsertLibraries.joined(separator: ":")
-                    ),
-                    at: 0
-                )
-            }
-            if liveVerification.hasDynamicSignatureMismatch {
-                findings.insert(
-                    ForensicFinding(
-                        severity: .critical,
-                        titleKey: .runningDynamicSigMismatchTitle,
-                        descKey: .runningDynamicSigMismatchDesc
-                    ),
-                    at: 0
-                )
-            }
-            if !liveVerification.unsignedMappedLibraries.isEmpty {
-                findings.append(
-                    ForensicFinding(
-                        severity: .warning,
-                        titleKey: .runningUnsignedMappedLibTitle,
-                        descKey: .runningUnsignedMappedLibDesc,
-                        detailSuffix: liveVerification.unsignedMappedLibraries.joined(separator: ", ")
-                    )
-                )
+            init(capacity: Int) {
+                collected.reserveCapacity(capacity)
             }
 
-            let deceptiveNames = OpenSafety.collectDeceptiveNames(
-                in: [proc.name, URL(fileURLWithPath: proc.executablePath).lastPathComponent]
-            )
-            if !deceptiveNames.isEmpty {
-                findings.append(
-                    ForensicFinding(
-                        severity: .warning,
-                        titleKey: .findingNameSpoofingTitle,
-                        descKey: .findingNameSpoofingDesc,
-                        detailSuffix: deceptiveNames.joined(separator: ", ")
-                    )
-                )
+            func nextEntry(from list: [RawProcessEntry]) -> RawProcessEntry? {
+                lock.withLock {
+                    guard cursor < list.count else { return nil }
+                    let idx = cursor
+                    cursor += 1
+                    return list[idx]
+                }
             }
 
-            let verdict: IntegrityVerdict
-            if !proc.dyldInsertLibraries.isEmpty || baseline.verdict == .tampered || liveVerification.hasDynamicSignatureMismatch {
-                verdict = .tampered
-            } else if baseline.isQuarantined || !deceptiveNames.isEmpty || baseline.verdict == .warning || !liveVerification.unsignedMappedLibraries.isEmpty {
-                verdict = .warning
-            } else {
-                verdict = .clean
+            func append(_ item: RunningProcessItem) {
+                lock.withLock { collected.append(item) }
             }
 
-            items.append(
-                RunningProcessItem(
-                    pid: proc.pid,
-                    name: proc.name,
-                    executablePath: proc.executablePath,
-                    bundlePath: enclosingApp,
-                    teamIdentifier: baseline.teamIdentifier,
-                    authorities: baseline.authorities,
-                    hasOfficialAppleChain: baseline.hasOfficialAppleChain,
-                    isQuarantined: baseline.isQuarantined,
-                    dyldInsertLibraries: proc.dyldInsertLibraries,
-                    envReadable: proc.envReadable,
-                    parentPid: parentInfo?.pid,
-                    parentName: parentInfo?.name,
-                    dynamicSignatureMismatch: liveVerification.hasDynamicSignatureMismatch,
-                    unsignedMappedLibraries: liveVerification.unsignedMappedLibraries,
-                    verdict: verdict,
-                    findings: findings
-                )
-            )
+            func allItems() -> [RunningProcessItem] {
+                lock.withLock { collected }
+            }
         }
+
+        let liveBox = ProcessResultBox(capacity: rawProcesses.count)
+        let liveGroup = DispatchGroup()
+        let liveWorkers = max(1, min(maxConcurrentExecScans, rawProcesses.count))
+
+        for _ in 0..<liveWorkers {
+            liveGroup.enter()
+            queue.async {
+                defer { liveGroup.leave() }
+                while let proc = liveBox.nextEntry(from: rawProcesses) {
+                    if cancellation?.isCancelled == true { break }
+                    let stdPath = URL(fileURLWithPath: proc.executablePath).standardizedFileURL.path
+                    let baseline = cacheBox.lookup(stdPath) ?? BinaryForensicBaseline(
+                        teamIdentifier: "not set",
+                        authorities: [],
+                        hasOfficialAppleChain: false,
+                        isAdhoc: false,
+                        isUnsigned: true,
+                        isQuarantined: false,
+                        isMachO: false,
+                        verdict: .warning,
+                        findings: []
+                    )
+                    let enclosingApp = enclosingAppBundlePath(forExecutablePath: proc.executablePath)
+                    let parentInfo = LiveProcessInspector.parentProcess(of: proc.pid)
+                    let liveVerification = LiveProcessInspector.verifyLiveProcess(
+                        pid: proc.pid,
+                        executablePath: proc.executablePath,
+                        parentHasOfficialChain: baseline.hasOfficialAppleChain,
+                        isParentAdhoc: baseline.isAdhoc
+                    )
+
+                    var findings = baseline.findings
+                    if !proc.dyldInsertLibraries.isEmpty {
+                        findings.insert(
+                            ForensicFinding(
+                                severity: .critical,
+                                titleKey: .persistencePlistDyldEnv,
+                                descKey: .runningDyldEnvDetected,
+                                detailSuffix: proc.dyldInsertLibraries.joined(separator: ":")
+                            ),
+                            at: 0
+                        )
+                    }
+                    if liveVerification.hasDynamicSignatureMismatch {
+                        findings.insert(
+                            ForensicFinding(
+                                severity: .critical,
+                                titleKey: .runningDynamicSigMismatchTitle,
+                                descKey: .runningDynamicSigMismatchDesc
+                            ),
+                            at: 0
+                        )
+                    }
+                    if !liveVerification.unsignedMappedLibraries.isEmpty {
+                        findings.append(
+                            ForensicFinding(
+                                severity: .warning,
+                                titleKey: .runningUnsignedMappedLibTitle,
+                                descKey: .runningUnsignedMappedLibDesc,
+                                detailSuffix: liveVerification.unsignedMappedLibraries.joined(separator: ", ")
+                            )
+                        )
+                    }
+
+                    let deceptiveNames = OpenSafety.collectDeceptiveNames(
+                        in: [proc.name, URL(fileURLWithPath: proc.executablePath).lastPathComponent]
+                    )
+                    if !deceptiveNames.isEmpty {
+                        findings.append(
+                            ForensicFinding(
+                                severity: .warning,
+                                titleKey: .findingNameSpoofingTitle,
+                                descKey: .findingNameSpoofingDesc,
+                                detailSuffix: deceptiveNames.joined(separator: ", ")
+                            )
+                        )
+                    }
+
+                    let verdict: IntegrityVerdict
+                    if !proc.dyldInsertLibraries.isEmpty || baseline.verdict == .tampered || liveVerification.hasDynamicSignatureMismatch {
+                        verdict = .tampered
+                    } else if baseline.isQuarantined || !deceptiveNames.isEmpty || baseline.verdict == .warning || !liveVerification.unsignedMappedLibraries.isEmpty {
+                        verdict = .warning
+                    } else {
+                        verdict = .clean
+                    }
+
+                    liveBox.append(
+                        RunningProcessItem(
+                            pid: proc.pid,
+                            name: proc.name,
+                            executablePath: proc.executablePath,
+                            bundlePath: enclosingApp,
+                            teamIdentifier: baseline.teamIdentifier,
+                            authorities: baseline.authorities,
+                            hasOfficialAppleChain: baseline.hasOfficialAppleChain,
+                            isQuarantined: baseline.isQuarantined,
+                            dyldInsertLibraries: proc.dyldInsertLibraries,
+                            envReadable: proc.envReadable,
+                            parentPid: parentInfo?.pid,
+                            parentName: parentInfo?.name,
+                            dynamicSignatureMismatch: liveVerification.hasDynamicSignatureMismatch,
+                            unsignedMappedLibraries: liveVerification.unsignedMappedLibraries,
+                            networkSockets: socketsByPid[proc.pid] ?? [],
+                            verdict: verdict,
+                            findings: findings
+                        )
+                    )
+                }
+            }
+        }
+        liveGroup.wait()
+        let items = liveBox.allItems()
 
         let sorted = items.sorted { lhs, rhs in
             if verdictRank(lhs.verdict) != verdictRank(rhs.verdict) {
@@ -703,15 +756,16 @@ public enum SystemAudit {
     }
 
     private static func enumerateProcesses() -> [RawProcessEntry] {
-        let byteCount = proc_listallpids(nil, 0)
-        guard byteCount > 0 else { return [] }
-        let capacity = Int(byteCount) / MemoryLayout<pid_t>.stride + 64
+        // proc_listallpids returns the number of PID entries (unlike proc_listpids which returns byte count).
+        let estimatedCount = proc_listallpids(nil, 0)
+        guard estimatedCount > 0 else { return [] }
+        let capacity = Int(estimatedCount) + 64
         var pids = [pid_t](repeating: 0, count: capacity)
-        let actualBytes = pids.withUnsafeMutableBytes { buf in
+        let actualCount = pids.withUnsafeMutableBytes { buf in
             proc_listallpids(buf.baseAddress, Int32(buf.count))
         }
-        guard actualBytes > 0 else { return [] }
-        let count = Int(actualBytes) / MemoryLayout<pid_t>.stride
+        guard actualCount > 0 else { return [] }
+        let count = min(capacity, Int(actualCount))
 
         var result: [RawProcessEntry] = []
         result.reserveCapacity(count)
@@ -857,18 +911,19 @@ public enum SystemAudit {
             verdict = .tampered
         } else if !sig.hasOfficialAppleChain {
             // Only inspect codesign verify / hook symbols when not protected by official Apple root chain.
-            let verify = ForensicScanner.runTool("/usr/bin/codesign", args: ["--verify", "--no-strict", path], cancellation: cancellation)
-            if !sig.isUnsigned && verify.exitCode != 0 && !verify.output.isEmpty {
-                findings.append(
-                    ForensicFinding(
-                        severity: .critical,
-                        titleKey: .findingVerifyFailedTitle,
-                        descKey: .findingVerifyFailedDesc,
-                        detailSuffix: verify.output.trimmingCharacters(in: .whitespacesAndNewlines)
-                    )
-                )
+            let verification = ForensicScanner.verifyCodeSignature(
+                at: path,
+                isUnsigned: sig.isUnsigned,
+                timeoutSeconds: ForensicScanner.executableVerifyTimeoutSeconds,
+                cancellation: cancellation
+            )
+            ForensicScanner.appendVerificationFindings(verification.outcome, findings: &findings)
+            if case .failed(let detail) = verification.outcome, !detail.isEmpty {
                 verdict = .tampered
             } else {
+                if case .timedOut = verification.outcome, verdict == .clean {
+                    verdict = .warning
+                }
                 let analysis = ForensicScanner.analyzeMachOHooks(
                     binaryPath: path,
                     libraryName: url.lastPathComponent,

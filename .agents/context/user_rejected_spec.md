@@ -8,3 +8,5 @@
    - Every user-visible string must be resolved through `AppSettings.t(_:)` and backed by 1:1 keys in `tr.lproj`, `en.lproj`, and `ro.lproj`.
 4. **No Editable External Text Editors for License Files:**
    - License documents (`Verificator-License.txt` and `Third-Party-Notices.txt`) must open in the in-app read-only `LicenseViewerSheet`, never in TextEdit or an external editor.
+5. **No Homebrew Tap Cask, Finder QuickLook Extension, or PDF Document Security Auditing (User Rejected 2026-11-14):**
+   - Do not add a `homebrew-tap` Cask, a Finder QuickLook preview extension, or PDF document security auditing to `Verificator`; keep `Verificator` scoped to binary, bundle, package, disk-image, and system forensic auditing.

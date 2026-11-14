@@ -17,38 +17,47 @@ Verificator/
 │   │   ├── AppUpdate.swift               GitHub Releases checker, download staging, Ed25519 & SHA-256 verification
 │   │   ├── ApplicationFirewall.swift     Read-only macOS Application Firewall (`socketfilterfw`) state & app-rule reader
 │   │   ├── AuditDiff.swift               Report & bundle diff engine (`AuditReportDiff`, `AuditDiff.compare`)
+│   │   ├── BundleDirectorySafety.swift   POSIX `DirectoryEntries`, `AppleDoubleDetector` & `BundleSymlinkAudit`
 │   │   ├── ChildProcessGuard.swift       Signal-safe external tool PID tracker & orphan process reaper
 │   │   ├── DiagnosticMasker.swift        Per-export salted SHA-256 PII path/username redactor
+│   │   ├── DiagnosticReportBuilder.swift Anonymized Markdown diagnostic bundle generator
 │   │   ├── EntitlementAnalyzer.swift     Informational security entitlement risk badge classifier
 │   │   ├── ExpectedChecksum.swift        SHA-256/SHA-512 checksum parser (raw, GNU, BSD, manifests) & weak-hash rejector
 │   │   ├── ForensicModels.swift          Codable reports (`AuditTargetKind`), BatchAuditSummary, ScanOptions, ScanCancellationToken
 │   │   ├── ForensicScanner.swift         4-layer zero false-positive `.app`/`.pkg`/`.dmg`/`.framework`/Mach-O scanner
 │   │   ├── InternetAccessPolicy.swift    Little Snitch `InternetAccessPolicy.plist` & `.strings` reader (nested depth < 4)
+│   │   ├── KernelSocketList.swift        XNU `pcblist_n` & Darwin `libproc` TCP/UDP live socket correlator
 │   │   ├── LocalModels.swift             On-device AI (Apple Intelligence, Ollama, LM Studio), LocalModelServer, ForensicAI
 │   │   ├── Localization.swift            AppLanguage, StringTable, LKey (all string keys)
+│   │   ├── ManagedConfiguration.swift    Enterprise MDM `objectIsForced` lock detection
 │   │   ├── OpenSafety.swift              Unicode RTLO / blank-filler / control-char detector & escaped display formatter
+│   │   ├── SettingsTransfer.swift        Portable JSON settings & baseline export/import (`~/` path mapping)
 │   │   ├── SignatureTracker.swift        Local app signature & CDHash baseline history (`0600` LRU JSON store)
 │   │   ├── SystemAudit.swift             Darwin running-process (`DYLD_*`) & LaunchAgents/Daemons persistence auditor
 │   │   ├── SystemSecurityChecks.swift    GatekeeperStatus, FullDiskAccess, RevocationChecker (OCSP), LiveProcessInspector
+│   │   ├── SystemSecurityPosture.swift   Host SIP, SSV, Gatekeeper, FileVault, SMART, FDA & read-only pkgutil orphan auditor
 │   │   └── VolumeEncryption.swift        Read-only `URLResourceValues` boot & removable-drive encryption inspector
 │   ├── VerificatorKit/          Testable SwiftUI app & state management layer (default isolation: MainActor)
-│   │   ├── VerificatorApp.swift          Scenes (Main, About, Log, Settings), AppCommands, AppDelegate (`NSServices`, URL scheme)
+│   │   ├── VerificatorApp.swift          Scenes (Main, About, Log, Settings, MenuBarExtra), AppCommands, AppDelegate (`NSServices`, URL scheme)
 │   │   ├── VerificatorIntents.swift      Shortcuts & Spotlight `AppIntents` (`AuditApplicationIntent`, `VerificatorShortcutsProvider`)
 │   │   ├── DockProgress.swift            NSApp Dock tile progress overlay (`DockProgress`, `DockTileView`, `DockTileSurface`)
 │   │   ├── LaunchServicesRegistration.swift  Per-build Launch Services (`LSRegisterURL`) auto-registration helper
-│   │   ├── AppModel.swift                Scan/batch/diff/system-audit orchestration, verified downloads, Markdown/JSON report export
-│   │   ├── AppSettings.swift             UserDefaults preferences, appearance, localization, shortcut conflict checks
+│   │   ├── AppModel.swift                Scan/batch/diff/system-audit orchestration, verified downloads, Markdown/JSON & diagnostic exports
+│   │   ├── AppSettings.swift             UserDefaults preferences, MDM lock enforcement, portable transfer, appearance, localization, shortcuts
 │   │   ├── LogStore.swift                Observable log store bridging AppLog to LogView
+│   │   ├── SystemIntegrationServices.swift Runtime bundle guard, NotificationService, LoginItemService & WatchedFolderService
 │   │   └── Views/
 │   │       ├── ContentView.swift         Master-detail UI, batch audit view, searchable dylib & entitlement inspector, verdict banner
+│   │       ├── DiagnosticSheet.swift     Anonymized Markdown diagnostic report preview, copy, and save sheet
 │   │       ├── DiffView.swift            Side-by-side bundle/report diff workspace (`⇧⌘D`)
-│   │       ├── SystemAuditView.swift     Running processes (`⌥⌘P`) and persistence (`⌥⌘T`) audit workspaces
+│   │       ├── SystemAuditView.swift     Running processes (`⌥⌘P`), persistence (`⌥⌘T`), and security posture (`⌥⌘G`) workspaces
 │   │       ├── SettingsView.swift        General, Scan, Shortcuts, and Forensic Engine, CLI & Updates tabs
 │   │       ├── AboutView.swift           About window
 │   │       ├── LicenseViewerSheet.swift  Read-only license and third-party notices viewer
+│   │       ├── SignatureChangeAlertSheet.swift Proactive signer-change modal (`Trust New Baseline`, `Open Report`, `Dismiss`)
 │   │       └── LogView.swift             Console-style log viewer (⌥⌘L)
 │   ├── Verificator/             App launcher entry point (`VerificatorMain.swift`)
-│   └── VerificatorCLI/          Standalone CLI tool (`verificator-cli`) sharing `VerificatorCore` (`--batch`, `--diff`, `--running`, `--persistence`, `--revocation`, `--expected-checksum`, `--redact`, `--no-firewall`)
+│   └── VerificatorCLI/          Standalone CLI tool (`verificator-cli`) sharing `VerificatorCore` (`--batch`, `--diff`, `--running`, `--persistence`, `--posture`, `--revocation`, `--expected-checksum`, `--redact`, `--no-firewall`)
 ├── Resources/                        {tr,en,ro}.lproj/{Localizable,InfoPlist,ServicesMenu,AppShortcuts,InternetAccessPolicy}.strings, InternetAccessPolicy.plist, AppIcon.icns
 ├── Support/Info.plist                Bundle metadata, document types, `verificator://` URL scheme, Finder `NSServices`, Ed25519 public key
 ├── Scripts/                          make_icon.swift, build_app.sh, verify_bundle.sh, package.sh,

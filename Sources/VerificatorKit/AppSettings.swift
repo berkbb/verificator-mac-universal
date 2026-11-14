@@ -151,38 +151,56 @@ public final class AppSettings {
     public static let maxRecentBundles = 10
 
     private enum Key {
-        static let language = "language"
-        static let appearance = "appearance"
-        static let deepFrameworkSignatureCheck = "deepFrameworkSignatureCheck"
-        static let extractTargetStrings = "extractTargetStrings"
-        static let includeGatekeeperAssessment = "includeGatekeeperAssessment"
-        static let checkCertificateRevocation = "checkCertificateRevocation"
-        static let autoScanOnDrop = "autoScanOnDrop"
-        static let revealAfterExport = "revealAfterExport"
-        static let redactSharedDiagnostics = "redactSharedDiagnostics"
-        static let recentBundles = "recentBundles"
-        static let recentVerdicts = "recentVerdicts"
-        static let checkUpdatesAtLaunch = "checkUpdatesAtLaunch"
-        static let updateConsentAsked = "updateConsentAsked"
-        static let customShortcuts = "customShortcuts"
-        static let aiSuggestions = "aiSuggestions"
-        static let aiProvider = "aiProvider"
-        static let aiOllamaModel = "aiOllamaModel"
-        static let aiLMStudioModel = "aiLMStudioModel"
-        static let aiAutomaticOrder = "aiAutomaticOrder"
-        static let aiAutomaticOff = "aiAutomaticOff"
-        static let all = [
-            language, appearance, deepFrameworkSignatureCheck, extractTargetStrings,
-            includeGatekeeperAssessment, checkCertificateRevocation, autoScanOnDrop, revealAfterExport,
-            redactSharedDiagnostics, recentBundles,
-            recentVerdicts, checkUpdatesAtLaunch, updateConsentAsked, customShortcuts,
-            aiSuggestions, aiProvider, aiOllamaModel, aiLMStudioModel,
-            aiAutomaticOrder, aiAutomaticOff,
-        ]
+        static let language = VerificatorPreferenceKey.language
+        static let appearance = VerificatorPreferenceKey.appearance
+        static let deepFrameworkSignatureCheck = VerificatorPreferenceKey.deepFrameworkSignatureCheck
+        static let extractTargetStrings = VerificatorPreferenceKey.extractTargetStrings
+        static let includeGatekeeperAssessment = VerificatorPreferenceKey.includeGatekeeperAssessment
+        static let checkCertificateRevocation = VerificatorPreferenceKey.checkCertificateRevocation
+        static let autoScanOnDrop = VerificatorPreferenceKey.autoScanOnDrop
+        static let revealAfterExport = VerificatorPreferenceKey.revealAfterExport
+        static let redactSharedDiagnostics = VerificatorPreferenceKey.redactSharedDiagnostics
+        static let recentBundles = VerificatorPreferenceKey.recentBundles
+        static let recentVerdicts = VerificatorPreferenceKey.recentVerdicts
+        static let checkUpdatesAtLaunch = VerificatorPreferenceKey.checkUpdatesAtLaunch
+        static let updateConsentAsked = VerificatorPreferenceKey.updateConsentAsked
+        static let customShortcuts = VerificatorPreferenceKey.customShortcuts
+        static let aiSuggestions = VerificatorPreferenceKey.aiSuggestions
+        static let aiProvider = VerificatorPreferenceKey.aiProvider
+        static let aiOllamaModel = VerificatorPreferenceKey.aiOllamaModel
+        static let aiLMStudioModel = VerificatorPreferenceKey.aiLMStudioModel
+        static let aiAutomaticOrder = VerificatorPreferenceKey.aiAutomaticOrder
+        static let aiAutomaticOff = VerificatorPreferenceKey.aiAutomaticOff
+        static let watchedFolderEnabled = VerificatorPreferenceKey.watchedFolderEnabled
+        static let watchedFolderPaths = VerificatorPreferenceKey.watchedFolderPaths
+        static let showMenuBarExtra = VerificatorPreferenceKey.showMenuBarExtra
+        static let all = VerificatorPreferenceKey.allKeys
     }
 
     @ObservationIgnored private let defaults: UserDefaults
     @ObservationIgnored public let strings: StringTable
+    @ObservationIgnored public var managedKeysOverride: Set<String>? = nil
+
+    public func isManaged(_ key: String) -> Bool {
+        if let managedKeysOverride {
+            return managedKeysOverride.contains(key)
+        }
+        return ManagedConfiguration.isManaged(key, defaults: defaults)
+    }
+
+    public var managedKeys: Set<String> {
+        if let locked = managedKeysOverride {
+            return ManagedConfiguration.managedKeys(
+                defaults: defaults,
+                overrideChecker: { key in locked.contains(key) }
+            )
+        }
+        return ManagedConfiguration.managedKeys(defaults: defaults, overrideChecker: nil)
+    }
+
+    public var hasAnyManagedPreferences: Bool {
+        !managedKeys.isEmpty
+    }
 
     public var language: AppLanguage {
         didSet {
@@ -254,6 +272,15 @@ public final class AppSettings {
     public var aiLMStudioModel: String {
         didSet { defaults.set(aiLMStudioModel, forKey: Key.aiLMStudioModel) }
     }
+    public var watchedFolderEnabled: Bool {
+        didSet { defaults.set(watchedFolderEnabled, forKey: Key.watchedFolderEnabled) }
+    }
+    public var watchedFolderPaths: [String] {
+        didSet { defaults.set(watchedFolderPaths, forKey: Key.watchedFolderPaths) }
+    }
+    public var showMenuBarExtra: Bool {
+        didSet { defaults.set(showMenuBarExtra, forKey: Key.showMenuBarExtra) }
+    }
 
     public var automaticProviders: [SuggestionProvider] {
         aiAutomaticOrder.filter { !aiAutomaticOff.contains($0) }
@@ -293,6 +320,9 @@ public final class AppSettings {
         aiAutomaticOff = Set((defaults.stringArray(forKey: Key.aiAutomaticOff) ?? []).compactMap(SuggestionProvider.init(rawValue:)))
         aiOllamaModel = defaults.string(forKey: Key.aiOllamaModel) ?? ""
         aiLMStudioModel = defaults.string(forKey: Key.aiLMStudioModel) ?? ""
+        watchedFolderEnabled = defaults.object(forKey: Key.watchedFolderEnabled) as? Bool ?? false
+        watchedFolderPaths = defaults.stringArray(forKey: Key.watchedFolderPaths) ?? []
+        showMenuBarExtra = defaults.object(forKey: Key.showMenuBarExtra) as? Bool ?? false
         if let data = defaults.data(forKey: Key.customShortcuts),
            let decoded = try? JSONDecoder().decode([String: KeyboardShortcutData].self, from: data) {
             customShortcuts = decoded
@@ -348,6 +378,119 @@ public final class AppSettings {
             .map { URL(fileURLWithPath: $0) }
     }
 
+    public func addWatchedFolder(_ path: String) {
+        guard !isManaged(Key.watchedFolderPaths) else { return }
+        let std = URL(fileURLWithPath: path).standardizedFileURL.path
+        guard !std.isEmpty, !watchedFolderPaths.contains(std) else { return }
+        watchedFolderPaths.append(std)
+    }
+
+    public func removeWatchedFolder(_ path: String) {
+        guard !isManaged(Key.watchedFolderPaths) else { return }
+        watchedFolderPaths.removeAll { $0 == path }
+    }
+
+    public func exportPortableSettingsData(
+        tracker: SignatureTracker,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        now: Date = Date()
+    ) throws -> Data {
+        let preferences: [String: PortableValue] = [
+            Key.language: .string(language.rawValue),
+            Key.appearance: .string(appearance.rawValue),
+            Key.deepFrameworkSignatureCheck: .bool(deepFrameworkSignatureCheck),
+            Key.extractTargetStrings: .bool(extractTargetStrings),
+            Key.includeGatekeeperAssessment: .bool(includeGatekeeperAssessment),
+            Key.checkCertificateRevocation: .bool(checkCertificateRevocation),
+            Key.autoScanOnDrop: .bool(autoScanOnDrop),
+            Key.revealAfterExport: .bool(revealAfterExport),
+            Key.redactSharedDiagnostics: .bool(redactSharedDiagnostics),
+            Key.checkUpdatesAtLaunch: .bool(checkUpdatesAtLaunch),
+            Key.aiSuggestions: .bool(aiSuggestions),
+            Key.aiProvider: .string(aiProvider.rawValue),
+            Key.watchedFolderEnabled: .bool(watchedFolderEnabled),
+            Key.showMenuBarExtra: .bool(showMenuBarExtra),
+        ]
+        return try SettingsTransfer.exportData(
+            preferences: preferences,
+            watchedFolders: watchedFolderPaths,
+            tracker: tracker,
+            home: home,
+            now: now
+        )
+    }
+
+    public func applyPortableImportData(
+        _ data: Data,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        mergeBaselines: ([String: SeenSignatureBaseline]) -> Int
+    ) throws -> SettingsImportOutcome {
+        let decoded = try SettingsTransfer.decodeAndValidate(
+            data: data,
+            home: home,
+            managedKeys: managedKeys
+        )
+        let prefs = decoded.document.preferences
+        var appliedKeys: [String] = []
+
+        for (key, value) in prefs.sorted(by: { $0.key < $1.key }) {
+            switch key {
+            case Key.language:
+                if let raw = value.stringValue, let next = AppLanguage(rawValue: raw) {
+                    language = next
+                    appliedKeys.append(key)
+                }
+            case Key.appearance:
+                if let raw = value.stringValue, let next = AppAppearance(rawValue: raw) {
+                    appearance = next
+                    appliedKeys.append(key)
+                }
+            case Key.deepFrameworkSignatureCheck:
+                if let b = value.boolValue { deepFrameworkSignatureCheck = b; appliedKeys.append(key) }
+            case Key.extractTargetStrings:
+                if let b = value.boolValue { extractTargetStrings = b; appliedKeys.append(key) }
+            case Key.includeGatekeeperAssessment:
+                if let b = value.boolValue { includeGatekeeperAssessment = b; appliedKeys.append(key) }
+            case Key.checkCertificateRevocation:
+                if let b = value.boolValue { checkCertificateRevocation = b; appliedKeys.append(key) }
+            case Key.autoScanOnDrop:
+                if let b = value.boolValue { autoScanOnDrop = b; appliedKeys.append(key) }
+            case Key.revealAfterExport:
+                if let b = value.boolValue { revealAfterExport = b; appliedKeys.append(key) }
+            case Key.redactSharedDiagnostics:
+                if let b = value.boolValue { redactSharedDiagnostics = b; appliedKeys.append(key) }
+            case Key.checkUpdatesAtLaunch:
+                if let b = value.boolValue { checkUpdatesAtLaunch = b; appliedKeys.append(key) }
+            case Key.aiSuggestions:
+                if let b = value.boolValue { aiSuggestions = b; appliedKeys.append(key) }
+            case Key.aiProvider:
+                if let raw = value.stringValue, let next = SuggestionProvider(rawValue: raw) {
+                    aiProvider = next
+                    appliedKeys.append(key)
+                }
+            case Key.watchedFolderEnabled:
+                if let b = value.boolValue { watchedFolderEnabled = b; appliedKeys.append(key) }
+            case Key.showMenuBarExtra:
+                if let b = value.boolValue { showMenuBarExtra = b; appliedKeys.append(key) }
+            default:
+                break
+            }
+        }
+
+        if !isManaged(Key.watchedFolderPaths) && !decoded.sanitizedWatchedFolders.isEmpty {
+            watchedFolderPaths = decoded.sanitizedWatchedFolders
+        }
+
+        let importedBaselinesCount = mergeBaselines(decoded.sanitizedBaselines)
+        return SettingsImportOutcome(
+            appliedPreferenceKeys: appliedKeys,
+            importedBaselinesCount: importedBaselinesCount,
+            importedWatchedFoldersCount: isManaged(Key.watchedFolderPaths) ? 0 : decoded.sanitizedWatchedFolders.count,
+            skippedManagedKeys: decoded.skippedManagedKeys,
+            rejectedEntries: decoded.rejected
+        )
+    }
+
     public func resetAll() {
         language = .tr
         appearance = .system
@@ -357,6 +500,7 @@ public final class AppSettings {
         checkCertificateRevocation = false
         autoScanOnDrop = true
         revealAfterExport = true
+        redactSharedDiagnostics = false
         recentBundles = []
         recentVerdicts = [:]
         checkUpdatesAtLaunch = false
@@ -367,8 +511,13 @@ public final class AppSettings {
         aiAutomaticOff = []
         aiOllamaModel = ""
         aiLMStudioModel = ""
+        watchedFolderEnabled = false
+        watchedFolderPaths = []
+        showMenuBarExtra = false
         customShortcuts = [:]
-        Key.all.forEach(defaults.removeObject(forKey:))
+        for key in Key.all where !isManaged(key) {
+            defaults.removeObject(forKey: key)
+        }
         defaults.removeObject(forKey: "AppleLanguages")
     }
 
@@ -411,6 +560,7 @@ public final class AppSettings {
         (.menuCompareMode, KeyboardShortcutData(key: "D", command: true, shift: true)),
         (.menuRunningProcesses, KeyboardShortcutData(key: "P", command: true, option: true)),
         (.menuPersistenceAudit, KeyboardShortcutData(key: "T", command: true, option: true)),
+        (.menuSystemPosture, KeyboardShortcutData(key: "G", command: true, option: true)),
     ]
 
     public func shortcutConflict(for candidate: KeyboardShortcutData, editingAction: ShortcutAction) -> ShortcutConflict? {

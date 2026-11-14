@@ -34,6 +34,14 @@ private struct GeneralSettingsView: View {
     var body: some View {
         @Bindable var settings = settings
         Form {
+            if settings.hasAnyManagedPreferences {
+                Section {
+                    Label(settings.t(.settingsManagedBanner), systemImage: "building.2.crop.circle")
+                        .font(.callout)
+                        .foregroundStyle(.blue)
+                }
+            }
+
             Section {
                 Picker(settings.t(.settingsLanguage), selection: $settings.language) {
                     ForEach(AppLanguage.allCases) { language in
@@ -41,6 +49,7 @@ private struct GeneralSettingsView: View {
                             .tag(language)
                     }
                 }
+                .disabled(settings.isManaged(VerificatorPreferenceKey.language))
                 .onChange(of: settings.language) { old, new in
                     if old != new {
                         showRestartAlert = true
@@ -54,10 +63,50 @@ private struct GeneralSettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
+                .disabled(settings.isManaged(VerificatorPreferenceKey.appearance))
             } footer: {
                 Text(settings.t(.restartMenuBarNotice))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+            }
+
+            Section {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(
+                        settings.t(.settingsLaunchAtLogin),
+                        isOn: Binding(
+                            get: { model.loginItemService.isEnabled },
+                            set: { model.loginItemService.setEnabled($0) }
+                        )
+                    )
+                    Text(settings.t(.settingsLaunchAtLoginNote))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if model.loginItemService.needsApproval {
+                        HStack(spacing: 8) {
+                            Label(settings.t(.settingsLaunchAtLoginNeedsApproval), systemImage: "exclamationmark.triangle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            Spacer()
+                            Button(settings.t(.settingsOpenLoginItemsSettings)) {
+                                model.loginItemService.openLoginItemsSettings()
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                        .padding(.top, 2)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(settings.t(.settingsShowMenuBarExtra), isOn: $settings.showMenuBarExtra)
+                        .disabled(settings.isManaged(VerificatorPreferenceKey.showMenuBarExtra))
+                    Text(settings.t(.settingsShowMenuBarExtraNote))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             Section(settings.t(.settingsAISection)) {
@@ -66,7 +115,7 @@ private struct GeneralSettingsView: View {
                         get: { settings.aiSuggestions },
                         set: { isOn in Task { await model.setAISuggestions(isOn) } }
                     ))
-                    .disabled(model.isCheckingAI)
+                    .disabled(model.isCheckingAI || settings.isManaged(VerificatorPreferenceKey.aiSuggestions))
                     .accessibilityIdentifier("verificator.settings.aiSuggestions")
                     Text(settings.t(.settingsAISuggestionsNote))
                         .font(.footnote)
@@ -80,7 +129,7 @@ private struct GeneralSettingsView: View {
                             .tag(provider)
                     }
                 }
-                .disabled(model.isCheckingAI)
+                .disabled(model.isCheckingAI || settings.isManaged(VerificatorPreferenceKey.aiProvider))
                 .accessibilityIdentifier("verificator.settings.aiProvider")
                 .onChange(of: settings.aiProvider) {
                     model.aiSummaryError = nil
@@ -259,17 +308,28 @@ private struct ScanSettingsView: View {
     var body: some View {
         @Bindable var settings = settings
         Form {
+            if settings.hasAnyManagedPreferences {
+                Section {
+                    Label(settings.t(.settingsManagedBanner), systemImage: "building.2.crop.circle")
+                        .font(.callout)
+                        .foregroundStyle(.blue)
+                }
+            }
+
             Section(settings.t(.settingsScanSection)) {
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(settings.t(.settingsDeepFrameworkCheck), isOn: $settings.deepFrameworkSignatureCheck)
+                        .disabled(settings.isManaged(VerificatorPreferenceKey.deepFrameworkSignatureCheck))
                     Text(settings.t(.settingsDeepFrameworkCheckNote))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Toggle(settings.t(.settingsExtractTargetStrings), isOn: $settings.extractTargetStrings)
+                    .disabled(settings.isManaged(VerificatorPreferenceKey.extractTargetStrings))
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(settings.t(.settingsIncludeSpctl), isOn: $settings.includeGatekeeperAssessment)
+                        .disabled(settings.isManaged(VerificatorPreferenceKey.includeGatekeeperAssessment))
                     Text(settings.t(.settingsIncludeSpctlNote))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -277,19 +337,113 @@ private struct ScanSettingsView: View {
                 }
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(settings.t(.settingsCheckRevocation), isOn: $settings.checkCertificateRevocation)
+                        .disabled(settings.isManaged(VerificatorPreferenceKey.checkCertificateRevocation))
                     Text(settings.t(.settingsCheckRevocationNote))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Toggle(settings.t(.settingsAutoScanOnDrop), isOn: $settings.autoScanOnDrop)
+                    .disabled(settings.isManaged(VerificatorPreferenceKey.autoScanOnDrop))
                 Toggle(settings.t(.settingsRevealAfterExport), isOn: $settings.revealAfterExport)
+                    .disabled(settings.isManaged(VerificatorPreferenceKey.revealAfterExport))
                 VStack(alignment: .leading, spacing: 4) {
                     Toggle(settings.t(.settingsRedactDiagnostics), isOn: $settings.redactSharedDiagnostics)
+                        .disabled(settings.isManaged(VerificatorPreferenceKey.redactSharedDiagnostics))
                     Text(settings.t(.settingsRedactDiagnosticsNote))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            Section(settings.t(.settingsWatchedSection)) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Toggle(settings.t(.settingsWatchedToggle), isOn: $settings.watchedFolderEnabled)
+                        .disabled(settings.isManaged(VerificatorPreferenceKey.watchedFolderEnabled))
+                        .onChange(of: settings.watchedFolderEnabled) { _, enabled in
+                            model.configureWatchedFolders()
+                            if enabled {
+                                Task { await model.notificationService.requestPermissionIfNeeded() }
+                            }
+                        }
+                    Text(settings.t(.settingsWatchedNote))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if settings.watchedFolderEnabled && model.notificationService.authState == .denied {
+                    HStack(spacing: 8) {
+                        Label(settings.t(.permissionBannerNotificationsDenied), systemImage: "bell.slash.fill")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                        Spacer()
+                        Button(settings.t(.permissionBannerOpenSettings)) {
+                            model.notificationService.openSystemSettings()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                } else if settings.watchedFolderEnabled && model.notificationService.authState == .unavailable {
+                    Label(settings.t(.permissionBannerNotificationsUnavailable), systemImage: "bell.badge.slash")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                }
+
+                if settings.watchedFolderPaths.isEmpty {
+                    Text(settings.t(.settingsWatchedEmpty))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(settings.watchedFolderPaths, id: \.self) { folderPath in
+                        HStack(spacing: 8) {
+                            Image(systemName: "folder")
+                                .foregroundStyle(.secondary)
+                            Text(folderPath)
+                                .font(.system(.caption, design: .monospaced))
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Button {
+                                settings.removeWatchedFolder(folderPath)
+                                model.configureWatchedFolders()
+                            } label: {
+                                Image(systemName: "minus.circle.fill")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(settings.isManaged(VerificatorPreferenceKey.watchedFolderPaths))
+                            .help(settings.t(.settingsWatchedRemoveFolder))
+                            .accessibilityLabel(settings.t(.settingsWatchedRemoveFolder))
+                        }
+                    }
+                }
+
+                HStack(spacing: 10) {
+                    Button {
+                        model.addWatchedFolderViaPanel()
+                    } label: {
+                        Label(settings.t(.settingsWatchedAddFolder), systemImage: "folder.badge.plus")
+                    }
+                    .disabled(settings.isManaged(VerificatorPreferenceKey.watchedFolderPaths))
+
+                    if !settings.watchedFolderPaths.isEmpty {
+                        Button {
+                            model.triggerWatchedFolderScanNow()
+                        } label: {
+                            Label(settings.t(.watchedScanNow), systemImage: "arrow.clockwise")
+                        }
+                        .disabled(model.watchedFolderService.isScanningNow)
+                    }
+
+                    Spacer()
+
+                    if let lastScan = model.watchedFolderService.lastScanDate {
+                        Text(settings.t(.settingsWatchedLastScanFormat, lastScan.formatted(date: .omitted, time: .shortened)))
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -391,6 +545,7 @@ private struct ShortcutsSettingsView: View {
                 readOnlyShortcutRow(title: settings.t(.menuBatchScan), shortcut: "⌥⌘B")
                 readOnlyShortcutRow(title: settings.t(.menuSaveJSONReport), shortcut: "⌥⌘S")
                 readOnlyShortcutRow(title: settings.t(.menuShowLog), shortcut: "⌥⌘L")
+                readOnlyShortcutRow(title: settings.t(.menuSystemPosture), shortcut: "⌥⌘G")
             }
 
             Section {
@@ -659,7 +814,41 @@ private struct EngineAndUpdateSettingsView: View {
                 }
                 updateDownloadStatus
                 Toggle(settings.t(.updateAutoCheck), isOn: $settings.checkUpdatesAtLaunch)
+                    .disabled(settings.isManaged(VerificatorPreferenceKey.checkUpdatesAtLaunch))
                     .onChange(of: settings.checkUpdatesAtLaunch) { settings.updateConsentAsked = true }
+            }
+
+            Section(settings.t(.settingsTransferSection)) {
+                HStack(spacing: 10) {
+                    Button {
+                        model.exportPortableSettingsViaPanel()
+                    } label: {
+                        Label(settings.t(.settingsExportTransfer), systemImage: "square.and.arrow.up")
+                    }
+
+                    Button {
+                        model.importPortableSettingsViaPanel()
+                    } label: {
+                        Label(settings.t(.settingsImportTransfer), systemImage: "square.and.arrow.down")
+                    }
+
+                    Button {
+                        model.openDiagnosticReportSheet()
+                    } label: {
+                        Label(settings.t(.diagnosticsButtonTitle), systemImage: "stethoscope")
+                    }
+                }
+
+                Text(settings.t(.settingsTransferNote))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let feedback = model.transferFeedback {
+                    Label(feedback.text, systemImage: feedback.isSuccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(feedback.isSuccess ? Color.green : Color.orange)
+                }
             }
 
             Section {

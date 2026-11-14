@@ -254,6 +254,7 @@ public struct BundleAuditReport: Sendable, Equatable, Codable {
     public let lcRpaths: [String]
     public let teamIdentifier: String
     public let authorities: [String]
+    public let isDevelopmentSigned: Bool
     public let signedTimestamp: String
     public let hasHardenedRuntime: Bool
     public let isNotarized: Bool
@@ -298,6 +299,7 @@ public struct BundleAuditReport: Sendable, Equatable, Codable {
         lcRpaths: [String] = [],
         teamIdentifier: String,
         authorities: [String],
+        isDevelopmentSigned: Bool = false,
         signedTimestamp: String,
         hasHardenedRuntime: Bool,
         isNotarized: Bool,
@@ -337,6 +339,7 @@ public struct BundleAuditReport: Sendable, Equatable, Codable {
         self.lcRpaths = lcRpaths
         self.teamIdentifier = teamIdentifier
         self.authorities = authorities
+        self.isDevelopmentSigned = isDevelopmentSigned
         self.signedTimestamp = signedTimestamp
         self.hasHardenedRuntime = hasHardenedRuntime
         self.isNotarized = isNotarized
@@ -378,6 +381,7 @@ public struct BundleAuditReport: Sendable, Equatable, Codable {
         case lcRpaths
         case teamIdentifier
         case authorities
+        case isDevelopmentSigned
         case signedTimestamp
         case hasHardenedRuntime
         case isNotarized
@@ -423,6 +427,7 @@ public struct BundleAuditReport: Sendable, Equatable, Codable {
         self.lcRpaths = try container.decodeIfPresent([String].self, forKey: .lcRpaths) ?? []
         self.teamIdentifier = try container.decode(String.self, forKey: .teamIdentifier)
         self.authorities = try container.decode([String].self, forKey: .authorities)
+        self.isDevelopmentSigned = try container.decodeIfPresent(Bool.self, forKey: .isDevelopmentSigned) ?? false
         self.signedTimestamp = try container.decode(String.self, forKey: .signedTimestamp)
         self.hasHardenedRuntime = try container.decode(Bool.self, forKey: .hasHardenedRuntime)
         self.isNotarized = try container.decode(Bool.self, forKey: .isNotarized)
@@ -475,6 +480,7 @@ public struct BundleAuditReport: Sendable, Equatable, Codable {
             lcRpaths: lcRpaths,
             teamIdentifier: teamIdentifier,
             authorities: authorities,
+            isDevelopmentSigned: isDevelopmentSigned,
             signedTimestamp: signedTimestamp,
             hasHardenedRuntime: hasHardenedRuntime,
             isNotarized: isNotarized,
@@ -528,6 +534,7 @@ public struct BundleAuditReport: Sendable, Equatable, Codable {
             lcRpaths: lcRpaths.map { masker.maskPath($0) },
             teamIdentifier: teamIdentifier,
             authorities: authorities,
+            isDevelopmentSigned: isDevelopmentSigned,
             signedTimestamp: signedTimestamp,
             hasHardenedRuntime: hasHardenedRuntime,
             isNotarized: isNotarized,

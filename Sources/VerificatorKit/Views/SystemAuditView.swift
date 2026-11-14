@@ -7,6 +7,7 @@ private enum RunningProcessFilter: String, CaseIterable, Identifiable {
     case all
     case issues
     case dyldEnv
+    case sockets
 
     var id: String { rawValue }
 
@@ -15,6 +16,7 @@ private enum RunningProcessFilter: String, CaseIterable, Identifiable {
         case .all: return .filterAll
         case .issues: return .runningFilterIssues
         case .dyldEnv: return .runningFilterDyldEnv
+        case .sockets: return .runningFilterSockets
         }
     }
 }
@@ -139,6 +141,12 @@ struct RunningProcessesAuditView: View {
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                if summary.processesWithSocketsCount > 0 {
+                    TagCapsule(
+                        text: "\(settings.t(.runningFilterSockets)): \(summary.processesWithSocketsCount)",
+                        color: .blue
+                    )
+                }
                 Spacer()
             }
             .padding(.horizontal, 16)
@@ -167,6 +175,8 @@ struct RunningProcessesAuditView: View {
                 if item.verdict == .clean && item.dyldInsertLibraries.isEmpty { return false }
             case .dyldEnv:
                 if item.dyldInsertLibraries.isEmpty { return false }
+            case .sockets:
+                if item.networkSockets.isEmpty { return false }
             }
 
             if query.isEmpty { return true }
@@ -174,6 +184,7 @@ struct RunningProcessesAuditView: View {
                 || "\(item.pid)".contains(query)
                 || item.executablePath.localizedCaseInsensitiveContains(query)
                 || item.teamIdentifier.localizedCaseInsensitiveContains(query)
+                || item.networkSockets.contains { $0.endpointSummary.localizedCaseInsensitiveContains(query) }
         }
     }
 
@@ -219,12 +230,36 @@ struct RunningProcessesAuditView: View {
                     if !proc.envReadable {
                         TagCapsule(text: settings.t(.runningEnvUnreadable), color: .secondary)
                     }
+
+                    if proc.networkSockets.contains(where: \.isListening) {
+                        TagCapsule(text: settings.t(.runningSocketListeningBadge), color: .blue)
+                    }
                 }
 
                 Text(proc.executablePath)
                     .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
+
+                if !proc.networkSockets.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(settings.t(.runningSocketsSection) + " (\(proc.networkSockets.count))")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.blue)
+                        ForEach(Array(proc.networkSockets.prefix(6))) { sock in
+                            Text(sock.endpointSummary)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                        if proc.networkSockets.count > 6 {
+                            Text("+\(proc.networkSockets.count - 6)")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                    .padding(.top, 2)
+                }
 
                 if !proc.dyldInsertLibraries.isEmpty {
                     Text(settings.t(.runningDyldEnvDetected, proc.dyldInsertLibraries.joined(separator: ":")))
@@ -565,5 +600,268 @@ struct TagCapsule: View {
             .padding(.horizontal, 7)
             .padding(.vertical, 2)
             .background(color.opacity(0.14), in: Capsule())
+    }
+}
+
+struct SystemPostureAuditView: View {
+    @Environment(AppModel.self) private var model
+    @Environment(AppSettings.self) private var settings
+    @State private var copiedReceiptId: String?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if model.isScanningPosture && model.systemPosture == nil {
+                VStack(spacing: 14) {
+                    ProgressView().controlSize(.large)
+                    Text(settings.t(.postureScanningProgress))
+                        .font(.headline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let posture = model.systemPosture {
+                postureContent(posture)
+            } else {
+                VStack(spacing: 14) {
+                    Image(systemName: "checkmark.shield")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.blue)
+                    Text(settings.t(.postureTitle))
+                        .font(.title2.bold())
+                    Button {
+                        model.refreshSystemPosture()
+                    } label: {
+                        Label(settings.t(.postureRefreshButton), systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .onAppear {
+            if model.systemPosture == nil && !model.isScanningPosture {
+                model.refreshSystemPosture()
+            }
+        }
+    }
+
+    private func postureContent(_ posture: SystemSecurityPosture) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(settings.t(.postureTitle))
+                            .font(.title3.bold())
+                        Text("\(posture.hardwareModel) · \(posture.macOSVersion) · \(posture.cpuArchitecture)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        model.openDiagnosticReportSheet()
+                    } label: {
+                        Label(settings.t(.diagnosticsButtonTitle), systemImage: "stethoscope")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        model.refreshSystemPosture()
+                    } label: {
+                        if model.isScanningPosture {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Label(settings.t(.postureRefreshButton), systemImage: "arrow.clockwise")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.isScanningPosture)
+                    .accessibilityLabel(settings.t(.postureRefreshButton))
+                }
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
+                    postureCard(
+                        title: settings.t(.postureCardSIP),
+                        stateText: label(for: posture.sipStatus),
+                        detail: posture.sipDetail,
+                        icon: "lock.shield.fill",
+                        tint: tint(for: posture.sipStatus)
+                    )
+                    postureCard(
+                        title: settings.t(.postureCardSSV),
+                        stateText: label(for: posture.ssvStatus),
+                        detail: posture.ssvDetail,
+                        icon: "internaldrive.fill",
+                        tint: tint(for: posture.ssvStatus)
+                    )
+                    postureCard(
+                        title: settings.t(.postureCardGatekeeper),
+                        stateText: label(for: posture.gatekeeperMasterStatus),
+                        detail: posture.gatekeeperDetail,
+                        icon: "checkmark.seal.fill",
+                        tint: tint(for: posture.gatekeeperMasterStatus)
+                    )
+                    postureCard(
+                        title: settings.t(.postureCardFileVault),
+                        stateText: settings.t(
+                            posture.fileVaultBootEncrypted == true
+                                ? .postureStateEncrypted
+                                : (posture.fileVaultBootEncrypted == false ? .postureStateUnencrypted : .postureStateUnknown)
+                        ),
+                        detail: "\(posture.bootVolumeName) (\(posture.bootVolumeFormat))",
+                        icon: "key.fill",
+                        tint: posture.fileVaultBootEncrypted == true ? .green : (posture.fileVaultBootEncrypted == false ? .orange : .secondary)
+                    )
+                    postureCard(
+                        title: settings.t(.postureCardFirewall),
+                        stateText: settings.t(
+                            posture.firewallEnabled == true
+                                ? .postureStateEnabled
+                                : (posture.firewallEnabled == false ? .postureStateDisabled : .postureStateUnknown)
+                        ),
+                        detail: settings.t(posture.firewallStealthMode == true ? .firewallStatusStealthOn : .firewallStatusStealthOff),
+                        icon: "flame.fill",
+                        tint: posture.firewallEnabled == true ? .green : (posture.firewallEnabled == false ? .orange : .secondary)
+                    )
+                    postureCard(
+                        title: settings.t(.postureCardSmart),
+                        stateText: label(for: posture.smartHealthStatus),
+                        detail: posture.smartDetail,
+                        icon: "externaldrive.badge.checkmark",
+                        tint: tint(for: posture.smartHealthStatus)
+                    )
+                    postureCard(
+                        title: settings.t(.postureCardFDA),
+                        stateText: settings.t(posture.fullDiskAccessGranted ? .postureStateGranted : .postureStateNotGranted),
+                        detail: settings.t(posture.fullDiskAccessGranted ? .fdaStatusGranted : .fdaStatusMissing),
+                        icon: posture.fullDiskAccessGranted ? "lock.open.fill" : "lock.fill",
+                        tint: posture.fullDiskAccessGranted ? .green : .orange,
+                        actionTitle: posture.fullDiskAccessGranted ? nil : settings.t(.fdaOpenSettings),
+                        action: { FullDiskAccess.openSystemSettings() }
+                    )
+                    postureCard(
+                        title: settings.t(.postureCardReceipts),
+                        stateText: "\(posture.orphanedReceipts.count) / \(posture.receiptsAuditedCount)",
+                        detail: settings.t(posture.orphanedReceipts.isEmpty ? .postureOrphanReceiptsEmpty : .postureOrphanReceiptsSection),
+                        icon: "shippingbox.fill",
+                        tint: posture.orphanedReceipts.isEmpty ? .green : .orange
+                    )
+                }
+
+                GroupBox(label: Label(settings.t(.postureOrphanReceiptsSection), systemImage: "tray.full").font(.headline)) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(settings.t(.postureOrphanReceiptsNote))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if posture.orphanedReceipts.isEmpty {
+                            Label(settings.t(.postureOrphanReceiptsEmpty), systemImage: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                                .font(.callout)
+                        } else {
+                            ForEach(posture.orphanedReceipts) { receipt in
+                                HStack(alignment: .top, spacing: 10) {
+                                    VStack(alignment: .leading, spacing: 3) {
+                                        HStack(spacing: 8) {
+                                            Text(receipt.packageIdentifier)
+                                                .font(.subheadline.bold())
+                                                .textSelection(.enabled)
+                                            Text(receipt.version)
+                                                .font(.caption2.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Text(receipt.receiptPlistPath)
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .textSelection(.enabled)
+                                        Text(receipt.forgetCommand)
+                                            .font(.system(.caption2, design: .monospaced))
+                                            .foregroundStyle(.orange)
+                                            .textSelection(.enabled)
+                                    }
+                                    Spacer()
+                                    Button {
+                                        model.copyForgetCommand(receipt.forgetCommand)
+                                        copiedReceiptId = receipt.id
+                                        Task { @MainActor in
+                                            try? await Task.sleep(for: .seconds(1.8))
+                                            if copiedReceiptId == receipt.id { copiedReceiptId = nil }
+                                        }
+                                    } label: {
+                                        Label(
+                                            settings.t(copiedReceiptId == receipt.id ? .actionCopied : .postureOrphanForgetCopy),
+                                            systemImage: copiedReceiptId == receipt.id ? "checkmark" : "doc.on.doc"
+                                        )
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .controlSize(.small)
+                                }
+                                .padding(10)
+                                .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 8))
+                            }
+                        }
+                    }
+                    .padding(.top, 6)
+                }
+            }
+            .padding(20)
+        }
+    }
+
+    private func label(for state: PostureCheckState) -> String {
+        switch state {
+        case .enabled: return settings.t(.postureStateEnabled)
+        case .disabled: return settings.t(.postureStateDisabled)
+        case .custom: return settings.t(.postureStateCustom)
+        case .verified: return settings.t(.postureStateVerified)
+        case .failing: return settings.t(.postureStateFailing)
+        case .unknown: return settings.t(.postureStateUnknown)
+        }
+    }
+
+    private func tint(for state: PostureCheckState) -> Color {
+        switch state {
+        case .enabled, .verified: return .green
+        case .disabled, .failing: return .red
+        case .custom: return .orange
+        case .unknown: return .secondary
+        }
+    }
+
+    private func postureCard(
+        title: String,
+        stateText: String,
+        detail: String,
+        icon: String,
+        tint: Color,
+        actionTitle: String? = nil,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .foregroundStyle(tint)
+                Text(title)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer()
+            }
+            Text(stateText)
+                .font(.headline)
+                .foregroundStyle(tint)
+            Text(detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .padding(.top, 2)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
     }
 }

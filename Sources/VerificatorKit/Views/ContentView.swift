@@ -10,6 +10,7 @@ enum SidebarItem: Hashable {
     case diff
     case runningProcesses
     case persistence
+    case systemPosture
     case tab(Int)
     case recent(URL)
 }
@@ -80,6 +81,8 @@ struct ContentView: View {
                         RunningProcessesAuditView()
                     } else if model.workspaceMode == .persistence {
                         PersistenceAuditView()
+                    } else if model.workspaceMode == .systemPosture {
+                        SystemPostureAuditView()
                     } else if let report = model.report {
                         verdictBanner(for: report)
                         Divider()
@@ -157,6 +160,23 @@ struct ContentView: View {
         .onDrop(of: [.fileURL], isTargeted: $isDropTargeted) { providers in
             handleDroppedProviders(providers)
         }
+        .sheet(isPresented: $model.showDiagnosticSheet) {
+            DiagnosticSheet()
+                .environment(model)
+                .environment(settings)
+        }
+        .sheet(
+            isPresented: Binding(
+                get: { model.signatureChangeModal != nil },
+                set: { if !$0 { model.dismissSignatureChangeModal() } }
+            )
+        ) {
+            if let change = model.signatureChangeModal {
+                SignatureChangeAlertSheet(change: change)
+                    .environment(model)
+                    .environment(settings)
+            }
+        }
     }
 
     private var windowTitle: String {
@@ -165,6 +185,7 @@ struct ContentView: View {
         case .diff: return settings.t(.diffTitle)
         case .runningProcesses: return settings.t(.runningTitle)
         case .persistence: return settings.t(.persistenceTitle)
+        case .systemPosture: return settings.t(.postureTitle)
         case .single: return model.report?.bundleName ?? settings.t(.appName)
         }
     }
@@ -184,6 +205,11 @@ struct ContentView: View {
         case .persistence:
             if let summary = model.persistenceSummary {
                 return settings.t(.persistenceSummaryStats, summary.totalCount, summary.cleanCount, summary.warningCount, summary.tamperedCount, summary.missingExecutableCount)
+            }
+            return ""
+        case .systemPosture:
+            if let posture = model.systemPosture {
+                return "\(posture.hardwareModel) · macOS \(posture.macOSVersion) · \(posture.cpuArchitecture)"
             }
             return ""
         case .diff:
@@ -237,6 +263,8 @@ struct ContentView: View {
                 return .runningProcesses
             case .persistence:
                 return .persistence
+            case .systemPosture:
+                return .systemPosture
             case .single:
                 if let current = model.currentBundleURL, model.report != nil {
                     return .recent(current.standardizedFileURL)
@@ -255,6 +283,8 @@ struct ContentView: View {
                 model.openRunningProcessesMode(startImmediately: model.runningSummary == nil)
             case .persistence:
                 model.openPersistenceMode(startImmediately: model.persistenceSummary == nil)
+            case .systemPosture:
+                model.openSystemPostureMode(startImmediately: model.systemPosture == nil)
             case .tab(let index):
                 model.workspaceMode = .single
                 model.selectedTab = index
@@ -288,6 +318,9 @@ struct ContentView: View {
 
                     Label(settings.t(.navPersistence), systemImage: "checklist")
                         .tag(SidebarItem.persistence)
+
+                    Label(settings.t(.navSystemPosture), systemImage: "checkmark.shield")
+                        .tag(SidebarItem.systemPosture)
 
                     if let report = model.report, model.workspaceMode == .single {
                         sidebarSectionRow(
@@ -662,6 +695,15 @@ struct ContentView: View {
             }
 
             Button {
+                model.openDiagnosticReportSheet()
+            } label: {
+                Image(systemName: "stethoscope")
+            }
+            .buttonStyle(.bordered)
+            .help(settings.t(.diagnosticsButtonTitle))
+            .accessibilityLabel(settings.t(.diagnosticsButtonTitle))
+
+            Button {
                 openWindow(id: WindowID.log)
             } label: {
                 Image(systemName: "terminal")
@@ -913,6 +955,9 @@ struct ContentView: View {
                     Text("• \(report.scanDurationMs) ms")
                         .font(.system(.caption2, design: .monospaced))
                         .foregroundStyle(.tertiary)
+                    if report.isDevelopmentSigned {
+                        TagCapsule(text: settings.t(.signingProfileDevCert), color: .blue)
+                    }
                 }
             }
             Spacer()
@@ -982,6 +1027,37 @@ struct ContentView: View {
                 }
                 .padding(10)
                 .background((qFeedback.isSuccess ? Color.green : Color.orange).opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            }
+
+            if settings.watchedFolderEnabled && model.notificationService.authState == .denied {
+                HStack(spacing: 8) {
+                    Image(systemName: "bell.slash.fill")
+                        .foregroundStyle(.orange)
+                    Text(settings.t(.permissionBannerNotificationsDenied))
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                    Spacer()
+                    Button(settings.t(.permissionBannerOpenSettings)) {
+                        model.notificationService.openSystemSettings()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                .padding(10)
+                .background(Color.orange.opacity(0.12))
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+            } else if settings.watchedFolderEnabled && model.notificationService.authState == .unavailable {
+                HStack(spacing: 8) {
+                    Image(systemName: "bell.badge.slash")
+                        .foregroundStyle(.orange)
+                    Text(settings.t(.permissionBannerNotificationsUnavailable))
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                    Spacer()
+                }
+                .padding(10)
+                .background(Color.orange.opacity(0.12))
                 .clipShape(RoundedRectangle(cornerRadius: 8))
             }
 
@@ -1153,6 +1229,10 @@ struct ContentView: View {
                             report.teamIdentifier == "not set" ? settings.t(.valueNotSet) : report.teamIdentifier,
                             monospaced: true,
                             highlight: isTampered && report.teamIdentifier == "not set"
+                        )
+                        infoRow(
+                            settings.t(.fieldSigningProfile),
+                            settings.t(model.signingProfileKey(for: report))
                         )
                         infoRow(
                             settings.t(.fieldAuthorities),

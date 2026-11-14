@@ -6,6 +6,7 @@ import SwiftUI
 /// Konsol benzeri Günlük penceresi: adli taramalar, imza doğrulamaları ve güncelleme denetimleri.
 struct LogView: View {
     @Environment(AppSettings.self) private var settings
+    @Environment(\.openWindow) private var openWindow
     let store: LogStore
     @State private var selection: Set<AppLog.Entry.ID> = []
     @State private var sortOrder = [KeyPathComparator(\AppLog.Entry.id, order: .reverse)]
@@ -104,6 +105,12 @@ struct LogView: View {
                 Button(settings.t(.logOpenInConsole), systemImage: "terminal") { store.openInConsole() }
                     .help(settings.t(.logOpenInConsole))
                     .disabled(!store.hasFile)
+                Button(settings.t(.diagnosticsButtonTitle), systemImage: "stethoscope") {
+                    openWindow(id: WindowID.main)
+                    AppModel.shared.openDiagnosticReportSheet()
+                }
+                .help(settings.t(.diagnosticsButtonTitle))
+                .accessibilityLabel(settings.t(.diagnosticsButtonTitle))
             }
         }
         .searchable(text: $store.searchText, placement: .toolbar, prompt: Text(settings.t(.logSearchPrompt)))

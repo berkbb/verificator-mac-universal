@@ -141,6 +141,7 @@ public enum LKey: String, CaseIterable, Sendable, Codable {
     case findingUnofficialAuthorityTitle, findingUnofficialAuthorityDesc
     case findingSignatureHijackTitle, findingSignatureHijackDesc
     case findingVerifyFailedTitle, findingVerifyFailedDesc
+    case findingVerifyTimedOutTitle, findingVerifyTimedOutDesc
     case findingInjectedDylibTitle, findingInjectedDylibDesc
     case findingObjcSwizzlingTitle, findingObjcSwizzlingDesc
     case findingMachPatchingTitle, findingMachPatchingDesc
@@ -149,6 +150,7 @@ public enum LKey: String, CaseIterable, Sendable, Codable {
     case findingPartialHookTitle, findingPartialHookDesc
     case findingUnsignedBundledLibTitle, findingUnsignedBundledLibDesc
     case findingSpctlRejectedTitle, findingSpctlRejectedDesc
+    case findingSpctlTimedOutTitle, findingSpctlTimedOutDesc
     case findingAdhocLocalTitle, findingAdhocLocalDesc
     case findingCleanTitle, findingCleanDesc
     case symbolCatSwizzle, symbolCatMemory, symbolCatDyld, symbolCatTarget
@@ -276,4 +278,34 @@ public enum LKey: String, CaseIterable, Sendable, Codable {
     case settingsBootVolumeEncrypted, settingsBootVolumeUnencrypted
     case actionCopyMaskedReport, actionSaveMaskedMarkdown, actionSaveMaskedJSON, actionCopyMaskedLogs
     case settingsRedactDiagnostics, settingsRedactDiagnosticsNote
+
+    // 1.4.0 — Core Forensics, Kernel Sockets, MDM, Watched Folders, Menu Bar, Posture & Transfer
+    case findingSymlinkLoopTitle, findingSymlinkLoopDesc
+    case findingSymlinkEscapeTitle, findingSymlinkEscapeDesc
+    case findingHiddenBinaryTitle, findingHiddenBinaryDesc
+    case fieldSigningProfile, signingProfileDevCert, signingProfileDeveloperID, signingProfileAppStore
+    case signingProfileAppleSystem, signingProfileAdhoc, signingProfileUnsigned, signingProfileCustom
+    case runningFilterSockets, runningSocketsSection, runningSocketListeningBadge
+    case settingsManagedByMDM, settingsManagedBanner
+    case settingsWatchedSection, settingsWatchedToggle, settingsWatchedNote, settingsWatchedAddFolder
+    case settingsWatchedEmpty, settingsWatchedLastScanFormat, settingsWatchedRemoveFolder, watchedScanNow
+    case notificationWatchedIssueTitle, notificationWatchedIssueBody
+    case settingsLaunchAtLogin, settingsLaunchAtLoginNote, settingsLaunchAtLoginNeedsApproval, settingsOpenLoginItemsSettings
+    case settingsShowMenuBarExtra, settingsShowMenuBarExtraNote
+    case menuBarOpenVerificator, menuBarScanApp, menuBarWatchedActive, menuBarWatchedPaused, menuBarLastStatus, menuBarQuit
+    case sigChangeModalTitle, sigChangeModalPreviousLabel, sigChangeModalCurrentLabel
+    case sigChangeModalTrustButton, sigChangeModalInspectButton, sigChangeModalDismissButton
+    case notificationSigChangeTitle, notificationSigChangeBody
+    case diagnosticsButtonTitle, diagnosticsSheetTitle, diagnosticsSheetNote
+    case diagnosticsSaveButton, diagnosticsCopyButton, diagnosticsCopiedNotice, diagnosticsDefaultFileName
+    case permissionBannerNotificationsDenied, permissionBannerNotificationsUnavailable, permissionBannerFDAMissing, permissionBannerOpenSettings
+    case settingsTransferSection, settingsExportTransfer, settingsImportTransfer, settingsTransferNote
+    case settingsImportSuccessFormat, settingsImportFailedFormat, settingsImportTooLarge
+    case settingsImportWrongFormat, settingsImportUnsupportedVersionFormat
+    case navSystemPosture, menuSystemPosture, postureTitle, postureRefreshButton, postureScanningProgress
+    case postureCardSIP, postureCardSSV, postureCardGatekeeper, postureCardFileVault
+    case postureCardFirewall, postureCardSmart, postureCardFDA, postureCardReceipts
+    case postureStateEnabled, postureStateDisabled, postureStateCustom, postureStateVerified, postureStateFailing
+    case postureStateUnknown, postureStateEncrypted, postureStateUnencrypted, postureStateGranted, postureStateNotGranted
+    case postureOrphanReceiptsSection, postureOrphanReceiptsEmpty, postureOrphanReceiptsNote, postureOrphanForgetCopy
 }

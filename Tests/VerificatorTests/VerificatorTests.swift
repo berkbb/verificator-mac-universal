@@ -1048,4 +1048,64 @@ struct VerificatorTests {
         #expect(model.workspaceMode == .batch)
         model.cancelBatchScan()
     }
+
+    @Test("Signature Verification Timeouts Never Trigger False Tampered Verdicts")
+    func codeSignatureVerificationTimeoutAndOutcomeClassification() {
+        #expect(ForensicScanner.bundleVerifyTimeoutSeconds >= 180)
+        #expect(ForensicScanner.defaultGatekeeperTimeoutSeconds >= 60)
+
+        let timedOutOutcome = ForensicScanner.evaluateVerifyResult(
+            (output: "Process timed out after 180s", exitCode: ForensicScanner.timedOutToolExitCode),
+            isUnsigned: false
+        )
+        #expect(timedOutOutcome == .timedOut("Process timed out after 180s"))
+
+        var timeoutFindings: [ForensicFinding] = []
+        ForensicScanner.appendVerificationFindings(timedOutOutcome, findings: &timeoutFindings)
+        #expect(timeoutFindings.count == 1)
+        #expect(timeoutFindings.first?.severity == .warning)
+        #expect(timeoutFindings.first?.titleKey == .findingVerifyTimedOutTitle)
+        #expect(timeoutFindings.first?.descKey == .findingVerifyTimedOutDesc)
+        #expect(!timeoutFindings.contains { $0.severity == .critical })
+
+        let failedOutcome = ForensicScanner.evaluateVerifyResult(
+            (output: "invalid signature (code or signature have been modified)", exitCode: 1),
+            isUnsigned: false
+        )
+        #expect(failedOutcome == .failed("invalid signature (code or signature have been modified)"))
+
+        var failedFindings: [ForensicFinding] = []
+        ForensicScanner.appendVerificationFindings(failedOutcome, findings: &failedFindings)
+        #expect(failedFindings.count == 1)
+        #expect(failedFindings.first?.severity == .critical)
+        #expect(failedFindings.first?.titleKey == .findingVerifyFailedTitle)
+
+        let unsignedOutcome = ForensicScanner.evaluateVerifyResult(
+            (output: "code object is not signed at all", exitCode: 1),
+            isUnsigned: false
+        )
+        #expect(unsignedOutcome == .skippedUnsigned)
+        #expect(ForensicScanner.evaluateVerifyResult((output: "", exitCode: 0), isUnsigned: false) == .valid)
+
+        let token = ScanCancellationToken()
+        token.cancel()
+        #expect(ForensicScanner.evaluateVerifyResult((output: "", exitCode: 15), isUnsigned: false, cancellation: token) == .cancelled)
+
+        var spctlFindings: [ForensicFinding] = []
+        ForensicScanner.appendGatekeeperFindings(
+            (accepted: false, timedOut: true, statusText: "Process timed out after 90s"),
+            warnOnRejection: true,
+            findings: &spctlFindings
+        )
+        #expect(spctlFindings.count == 1)
+        #expect(spctlFindings.first?.severity == .warning)
+        #expect(spctlFindings.first?.titleKey == .findingSpctlTimedOutTitle)
+
+        let sleepTimeout = ForensicScanner.runTool("/bin/sleep", args: ["10"], timeoutSeconds: 0.2)
+        #expect(sleepTimeout.exitCode == ForensicScanner.timedOutToolExitCode)
+        #expect(sleepTimeout.output.localizedCaseInsensitiveContains("timed out"))
+
+        let sleepCancelled = ForensicScanner.runTool("/bin/sleep", args: ["10"], timeoutSeconds: 5, cancellation: token)
+        #expect(sleepCancelled.exitCode == ForensicScanner.cancelledToolExitCode)
+    }
 }
