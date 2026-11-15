@@ -602,6 +602,15 @@
 "postureStateUnencrypted" = "Unencrypted";
 "postureStateGranted" = "Granted";
 "postureStateNotGranted" = "Not Granted";
+"postureDetailSIPEnabled" = "System files and kernel protection active.";
+"postureDetailSIPDisabled" = "System integrity protection is disabled.";
+"postureDetailSIPCustom" = "Custom csrutil configuration active.";
+"postureDetailSSVEnabled" = "Cryptographically sealed APFS system volume active.";
+"postureDetailSSVDisabled" = "Authenticated root volume verification disabled.";
+"postureDetailGatekeeperEnabled" = "App signature and notarization assessments active.";
+"postureDetailGatekeeperDisabled" = "Gatekeeper assessments globally disabled.";
+"postureDetailSmartVerified" = "Hardware self-monitoring health verified.";
+"postureDetailSmartFailing" = "Drive reported a hardware failure warning.";
 "postureOrphanReceiptsSection" = "Orphaned Third-Party Installer Receipts (%1$ld / %2$ld audited)";
 "postureOrphanReceiptsEmpty" = "All audited third-party pkgutil receipts still map to installed payloads on disk.";
 "postureOrphanReceiptsNote" = "Read-only audit: these /private/var/db/receipts entries list BOM payload paths that no longer exist on disk (for example after manual drag-to-Trash deletion). Use the copyable command if you want to clean up old receipts manually.";

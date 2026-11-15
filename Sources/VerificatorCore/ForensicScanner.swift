@@ -947,22 +947,25 @@ public enum ForensicScanner {
     public static func auditTarget(
         at url: URL,
         options: ScanOptions = ScanOptions(),
-        cancellation: ScanCancellationToken? = nil
+        cancellation: ScanCancellationToken? = nil,
+        onProgress: (@Sendable (_ fraction: Double) -> Void)? = nil
     ) -> BundleAuditReport {
+        onProgress?(0.10)
         let ext = url.pathExtension.lowercased()
         switch ext {
         case "app":
-            return auditMachOBundle(at: url, targetKind: .appBundle, options: options, cancellation: cancellation)
+            return auditMachOBundle(at: url, targetKind: .appBundle, options: options, cancellation: cancellation, onProgress: onProgress)
         case "framework", "bundle", "appex", "xpc", "kext", "plugin":
-            return auditMachOBundle(at: url, targetKind: .nestedBundle, options: options, cancellation: cancellation)
+            return auditMachOBundle(at: url, targetKind: .nestedBundle, options: options, cancellation: cancellation, onProgress: onProgress)
         case "pkg", "mpkg":
-            return auditInstallerPackage(at: url, options: options, cancellation: cancellation)
+            return auditInstallerPackage(at: url, options: options, cancellation: cancellation, onProgress: onProgress)
         case "dmg":
-            return auditDiskImage(at: url, options: options, cancellation: cancellation)
+            return auditDiskImage(at: url, options: options, cancellation: cancellation, onProgress: onProgress)
         default:
             if supportedBinaryExtensions.contains(ext) || isMachOBinary(at: url) {
-                return auditStandaloneMachO(at: url, options: options, cancellation: cancellation)
+                return auditStandaloneMachO(at: url, options: options, cancellation: cancellation, onProgress: onProgress)
             }
+            onProgress?(1.0)
             return unsupportedTargetReport(at: url)
         }
     }
@@ -970,20 +973,22 @@ public enum ForensicScanner {
     public static func auditBundle(
         at url: URL,
         options: ScanOptions = ScanOptions(),
-        cancellation: ScanCancellationToken? = nil
+        cancellation: ScanCancellationToken? = nil,
+        onProgress: (@Sendable (_ fraction: Double) -> Void)? = nil
     ) -> BundleAuditReport {
         let ext = url.pathExtension.lowercased()
         if ext != "app" && !ext.isEmpty {
-            return auditTarget(at: url, options: options, cancellation: cancellation)
+            return auditTarget(at: url, options: options, cancellation: cancellation, onProgress: onProgress)
         }
-        return auditMachOBundle(at: url, targetKind: .appBundle, options: options, cancellation: cancellation)
+        return auditMachOBundle(at: url, targetKind: .appBundle, options: options, cancellation: cancellation, onProgress: onProgress)
     }
 
     private static func auditMachOBundle(
         at url: URL,
         targetKind: AuditTargetKind,
         options: ScanOptions = ScanOptions(),
-        cancellation: ScanCancellationToken? = nil
+        cancellation: ScanCancellationToken? = nil,
+        onProgress: (@Sendable (_ fraction: Double) -> Void)? = nil
     ) -> BundleAuditReport {
         let startTime = ContinuousClock.now
         let bundlePath = url.path
@@ -1050,11 +1055,13 @@ public enum ForensicScanner {
         )
         mainSig.isUnsigned = verification.isUnsigned
         let gatekeeperStatus = verification.gatekeeperStatus
+        onProgress?(0.40)
 
         var spctlResult: (accepted: Bool, timedOut: Bool, statusText: String)?
         if options.includeGatekeeperAssessment && cancellation?.isCancelled != true {
             spctlResult = assessGatekeeperDetailed(at: bundlePath, cancellation: cancellation)
         }
+        onProgress?(0.55)
 
         // 2. Paket içi kütüphaneler (Frameworks / Libraries / MacOS / PlugIns / XPCServices / Helpers / WrappedBundle)
         var context = BundledInspectionContext(
@@ -1136,6 +1143,7 @@ public enum ForensicScanner {
         }
 
         // 3. Ana çalıştırılabilir dosya LC_LOAD_DYLIB bağlantıları (otool -L) ve gerçek LC_RPATH yolları
+        onProgress?(0.75)
         let hasExec = fm.fileExists(atPath: layout.execURL.path)
         let otoolOut = hasExec && cancellation?.isCancelled != true
             ? runTool("/usr/bin/otool", args: ["-L", layout.execURL.path], cancellation: cancellation).output
@@ -1398,6 +1406,7 @@ public enum ForensicScanner {
         }
 
         let isQuarantined = hasQuarantineAttribute(at: bundlePath, executablePath: layout.execURL.path)
+        onProgress?(1.0)
 
         return BundleAuditReport(
             targetKind: targetKind,
@@ -1447,7 +1456,8 @@ public enum ForensicScanner {
     private static func auditInstallerPackage(
         at url: URL,
         options: ScanOptions,
-        cancellation: ScanCancellationToken?
+        cancellation: ScanCancellationToken?,
+        onProgress: (@Sendable (_ fraction: Double) -> Void)? = nil
     ) -> BundleAuditReport {
         let startTime = ContinuousClock.now
         let path = url.path
@@ -1458,9 +1468,11 @@ public enum ForensicScanner {
         let fileSHA = digests.sha256
         let fileSHA512 = digests.sha512
         let isQuarantined = hasQuarantineAttribute(at: path)
+        onProgress?(0.45)
 
         let res = runTool("/usr/sbin/pkgutil", args: ["--check-signature", path], timeoutSeconds: pkgVerifyTimeoutSeconds, cancellation: cancellation)
         let out = res.output
+        onProgress?(0.75)
 
         var statusLine = "-"
         var authorities: [String] = []
@@ -1590,6 +1602,7 @@ public enum ForensicScanner {
 
         let resolvedAuths = authorities.isEmpty ? (isUnsigned ? ["Unsigned (.pkg)"] : []) : authorities
         let durationMs = elapsedMillis(since: startTime)
+        onProgress?(1.0)
 
         return BundleAuditReport(
             targetKind: .installerPackage,
@@ -1636,7 +1649,8 @@ public enum ForensicScanner {
     private static func auditDiskImage(
         at url: URL,
         options: ScanOptions,
-        cancellation: ScanCancellationToken?
+        cancellation: ScanCancellationToken?,
+        onProgress: (@Sendable (_ fraction: Double) -> Void)? = nil
     ) -> BundleAuditReport {
         let startTime = ContinuousClock.now
         let path = url.path
@@ -1647,6 +1661,7 @@ public enum ForensicScanner {
         let fileSHA = digests.sha256
         let fileSHA512 = digests.sha512
         let isQuarantined = hasQuarantineAttribute(at: path)
+        onProgress?(0.45)
 
         var (sig, codesignOut) = parseSignature(for: path, cancellation: cancellation)
         let verification = verifyCodeSignature(
@@ -1656,6 +1671,7 @@ public enum ForensicScanner {
             cancellation: cancellation
         )
         sig.isUnsigned = verification.isUnsigned
+        onProgress?(0.75)
 
         var findings: [ForensicFinding] = []
         var verdict: IntegrityVerdict
@@ -1749,6 +1765,7 @@ public enum ForensicScanner {
         }
 
         let durationMs = elapsedMillis(since: startTime)
+        onProgress?(1.0)
         return BundleAuditReport(
             targetKind: .diskImage,
             bundlePath: path,
@@ -1795,7 +1812,8 @@ public enum ForensicScanner {
     private static func auditStandaloneMachO(
         at url: URL,
         options: ScanOptions,
-        cancellation: ScanCancellationToken?
+        cancellation: ScanCancellationToken?,
+        onProgress: (@Sendable (_ fraction: Double) -> Void)? = nil
     ) -> BundleAuditReport {
         let startTime = ContinuousClock.now
         let path = url.path
@@ -1820,6 +1838,7 @@ public enum ForensicScanner {
         )
         sig.isUnsigned = verification.isUnsigned
         let gatekeeperStatus = verification.gatekeeperStatus
+        onProgress?(0.50)
 
         let otoolOut = cancellation?.isCancelled != true
             ? runTool("/usr/bin/otool", args: ["-L", path], cancellation: cancellation).output
@@ -1827,6 +1846,7 @@ public enum ForensicScanner {
         let rawRpaths = cancellation?.isCancelled != true
             ? extractRpaths(for: path, execDir: url.deletingLastPathComponent(), cancellation: cancellation).rawPaths
             : []
+        onProgress?(0.75)
 
         var rawLoadPaths: [String] = []
         var seenPaths: Set<String> = []
@@ -1982,6 +2002,7 @@ public enum ForensicScanner {
 
         let isQuarantined = hasQuarantineAttribute(at: path)
         let durationMs = elapsedMillis(since: startTime)
+        onProgress?(1.0)
 
         return BundleAuditReport(
             targetKind: .standaloneMachO,

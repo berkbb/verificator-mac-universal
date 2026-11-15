@@ -476,14 +476,17 @@ public enum AuditDiff {
     public static func loadOrAudit(
         url: URL,
         options: ScanOptions = ScanOptions(),
-        cancellation: ScanCancellationToken? = nil
+        cancellation: ScanCancellationToken? = nil,
+        onProgress: (@Sendable (_ fraction: Double) -> Void)? = nil
     ) throws -> AuditDiffEndpoint {
         let standardized = url.standardizedFileURL
         if standardized.pathExtension.lowercased() == "json" {
+            onProgress?(0.35)
             let data = try Data(contentsOf: standardized)
             guard let decoded = try? JSONDecoder().decode(BundleAuditReport.self, from: data) else {
                 throw AuditDiffError.unreadableJSON(standardized.path)
             }
+            onProgress?(1.0)
             return AuditDiffEndpoint(
                 sourceDescription: standardized.path,
                 isFromSavedJSON: true,
@@ -495,7 +498,12 @@ public enum AuditDiff {
             throw AuditDiffError.unsupportedInput(standardized.path)
         }
 
-        let report = ForensicScanner.auditTarget(at: standardized, options: options, cancellation: cancellation)
+        let report = ForensicScanner.auditTarget(
+            at: standardized,
+            options: options,
+            cancellation: cancellation,
+            onProgress: onProgress
+        )
         return AuditDiffEndpoint(
             sourceDescription: standardized.path,
             isFromSavedJSON: false,

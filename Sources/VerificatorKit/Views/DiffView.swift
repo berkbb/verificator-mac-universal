@@ -9,7 +9,7 @@ struct DiffView: View {
     @Environment(AppSettings.self) private var settings
 
     private var table: StringTable {
-        StringTable(bundle: .main)
+        settings.strings
     }
 
     var body: some View {

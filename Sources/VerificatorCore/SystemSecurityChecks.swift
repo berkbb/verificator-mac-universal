@@ -46,19 +46,79 @@ public enum GatekeeperStatus: String, Sendable, Equatable, Codable, CaseIterable
 /// macOS Tam Disk Erişimi (TCC Full Disk Access) salt-okunur durum denetimi.
 public enum FullDiskAccess: Sendable {
     public static var isGranted: Bool {
-        isGranted(homeDirectoryURL: FileManager.default.homeDirectoryForCurrentUser)
+        if preflightTCCGranted() {
+            return true
+        }
+        return isGranted(
+            homeDirectoryURL: FileManager.default.homeDirectoryForCurrentUser,
+            includeSystemPaths: true
+        )
     }
 
-    /// Yalnızca Tam Disk Erişimi verildiğinde okunabilen standart kullanıcı TCC yollarını yoklar.
-    public static func isGranted(homeDirectoryURL: URL) -> Bool {
+    /// Yalnızca Tam Disk Erişimi verildiğinde açılabilen standart kullanıcı ve sistem TCC yollarını gerçek `open(2)` / `opendir(3)` ile yoklar.
+    public static func isGranted(homeDirectoryURL: URL, includeSystemPaths: Bool = false) -> Bool {
         let home = homeDirectoryURL.path
-        let probePaths = [
+        var protectedFilePaths = [
             home + "/Library/Application Support/com.apple.TCC/TCC.db",
             home + "/Library/Safari/Bookmarks.plist",
-            home + "/Library/Suggestions",
+            home + "/Library/Safari/CloudTabs.db",
+            home + "/Library/Safari/History.db",
+            home + "/Library/Cookies/Cookies.binarycookies",
         ]
-        let fm = FileManager.default
-        return probePaths.contains { fm.isReadableFile(atPath: $0) }
+        var protectedDirectoryPaths = [
+            home + "/Library/Application Support/com.apple.TCC",
+            home + "/Library/Safari",
+            home + "/Library/Mail",
+            home + "/Library/Messages",
+            home + "/Library/Suggestions",
+            home + "/Library/Cookies",
+            home + "/Library/Containers/com.apple.Safari",
+            home + "/Library/Containers/com.apple.mail",
+            home + "/Library/Containers/com.apple.iChat",
+        ]
+        if includeSystemPaths {
+            protectedFilePaths.append(contentsOf: [
+                "/Library/Preferences/com.apple.TimeMachine.plist",
+                "/Library/Application Support/com.apple.TCC/TCC.db",
+            ])
+            protectedDirectoryPaths.append("/Library/Application Support/com.apple.TCC")
+        }
+
+        if protectedFilePaths.contains(where: { canOpenProtectedFile(atPath: $0) }) {
+            return true
+        }
+        if protectedDirectoryPaths.contains(where: { canOpenProtectedDirectory(atPath: $0) }) {
+            return true
+        }
+        return false
+    }
+
+    /// TCC.framework `TCCAccessPreflight("kTCCServiceSystemPolicyAllFiles", nil)` ön denetimi (`0` = izin verildi).
+    internal static func preflightTCCGranted() -> Bool {
+        typealias TCCAccessPreflightFn = @convention(c) (CFString, CFDictionary?) -> Int32
+        guard let handle = dlopen("/System/Library/PrivateFrameworks/TCC.framework/TCC", RTLD_LAZY),
+              let sym = dlsym(handle, "TCCAccessPreflight") else {
+            return false
+        }
+        let preflight = unsafeBitCast(sym, to: TCCAccessPreflightFn.self)
+        return preflight("kTCCServiceSystemPolicyAllFiles" as CFString, nil) == 0
+    }
+
+    internal static func canOpenProtectedFile(atPath path: String) -> Bool {
+        var st = stat()
+        guard stat(path, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else {
+            return false
+        }
+        let fd = Darwin.open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC)
+        guard fd >= 0 else { return false }
+        Darwin.close(fd)
+        return true
+    }
+
+    internal static func canOpenProtectedDirectory(atPath path: String) -> Bool {
+        guard let dir = Darwin.opendir(path) else { return false }
+        Darwin.closedir(dir)
+        return true
     }
 
     @MainActor

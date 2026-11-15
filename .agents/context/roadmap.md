@@ -73,3 +73,14 @@
   - [x] Connected `AppUpdateChecker.downloadAndVerify(release:)` to enforce `SHA256SUMS.txt` and Ed25519 `.dmg.sig` verification against `VerificatorUpdatePublicEDKey`, plus one-click **Open Downloaded Archive** and **Show in Finder** actions in Settings.
 - [x] **UI Search, Filtering, Copy, CI & `VerificatorKit` Test Coverage**:
   - [x] Dylib & batch search, `All`/`Non-System`/`Suspicious` filter, expanded **Raw Forensic Output** (`LC_RPATH`, `Entitlements XML`, `Gatekeeper spctl`), section copy controls, AI Cancel/Copy controls, `⌥⌘S` JSON report export, built-in shortcut collision checks, `set-version.sh` -> `AppInfo` sync, and `VerificatorKit` unit tests.
+
+## Completed Milestones (v1.3.1 — 2026-11-15)
+
+- [x] **Full Disk Access Calibration (`FullDiskAccess.isGranted` & `SystemSecurityPosture.withFullDiskAccess`)**:
+  - [x] `TCCAccessPreflight("kTCCServiceSystemPolicyAllFiles", nil)` + `Darwin.open` / `Darwin.opendir` TCC probes across user and system containers, plus live posture synchronization on app activation.
+- [x] **Universal Dock Tile Progress Bar (`DockProgress` & `AppModel`)**:
+  - [x] Stepwise and fractional Dock progress bar across all 6 sidebar modes (`.single`, `.batch`, `.diff`, `.runningProcesses`, `.persistence`, `.systemPosture`) and Gatekeeper assessments.
+- [x] **Persistence Zero False-Positive Calibration (`SystemAudit`)**:
+  - [x] Skips retired empty `<dict/>` tombstone LaunchAgent/LaunchDaemon plists (`com.google.keystone.*.plist`) and keeps Developer ID / Apple-signed quarantined updaters (`hasOfficialAppleChain`) at `IntegrityVerdict.clean` with informational quarantine badges.
+- [x] **System Posture Localization & UI Polish (`SystemPostureAuditView`, `ContentView`, `SystemSecurityFeaturesTests`)**:
+  - [x] Trilingual (`tr`/`en`/`ro`) card detail summaries with raw CLI output tooltips, formatted `(%1$ld / %2$ld)` receipt counters, static `noParameterizedLKeyCalledWithoutArguments` guard test, and removal of duplicate sidebar back-home button.

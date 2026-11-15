@@ -3,6 +3,27 @@
 This file follows the [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format and
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] — 2026-11-15
+
+### Added
+- **Universal Dock Tile Progress Bar Across All Workspace Modes (`DockProgress` & `AppModel`):**
+  - Extended `DockProgress` coordination (`beginDockProgress`, `updateDockProgress`, `finishDockProgress`) beyond Batch Audit to cover all six sidebar workspace modes: single-target forensic scans (`ForensicScanner.auditTarget(..., onProgress:)`), batch directory scans, report/bundle diff comparisons (`AuditDiff.loadOrAudit`), running-process scans (`SystemAudit.auditRunningProcesses`), persistence audits (`SystemAudit.auditPersistence`), and host security posture / receipt audits (`SystemSecurityPostureAuditor.collect(..., onProgress:)`), plus on-demand Gatekeeper (`spctl`) verification.
+- **Localized System Security Posture Card Details (`SystemPostureAuditView`):**
+  - Added 1:1 trilingual (`tr`, `en`, `ro`) descriptions for SIP (`postureDetailSIP*`), Signed System Volume (`postureDetailSSV*`), Gatekeeper (`postureDetailGatekeeper*`), and Startup Disk S.M.A.R.T. (`postureDetailSmart*`) cards while preserving the raw `csrutil`, `spctl`, and `diskutil` CLI outputs as card hover tooltips (`.help(...)`).
+- **Parameterized Localization Key Regression Guard (`SystemSecurityFeaturesTests`):**
+  - Added `noParameterizedLKeyCalledWithoutArguments` to statically verify that every `LKey` containing positional printf/NSString format specifiers (`%1$@`, `%1$ld`, `%2$ld`, etc.) is always invoked with its required format arguments across `Sources/VerificatorKit/`.
+
+### Fixed
+- **Full Disk Access Detection on macOS 26/27 (`FullDiskAccess.isGranted` & `SystemSecurityPosture`):**
+  - Fixed false-negative `"Not Granted"` (`Verilmedi`) readings when Full Disk Access is enabled in System Settings on macOS 26/27 by querying `TCCAccessPreflight("kTCCServiceSystemPolicyAllFiles", nil)` via `TCC.framework` and probing TCC-protected files/directories via `Darwin.open(..., O_RDONLY | O_NONBLOCK | O_CLOEXEC)` and `Darwin.opendir(...)` across user and system containers (`~/Library/Safari`, `~/Library/Mail`, `/Library/Application Support/com.apple.TCC/TCC.db`, `/private/var/db/ConfigurationProfiles/Store`), and synchronized `systemPosture.fullDiskAccessGranted` automatically when the app becomes active (`refreshSystemSecurityStatus()`).
+- **Unformatted `%1$ld / %2$ld` String Specifiers (`SystemPostureAuditView`, `MenuBarExtraMenuView`, `AppModel`):**
+  - Fixed `.postureOrphanReceiptsSection` calls in `SystemPostureAuditView` that omitted `(posture.orphanedReceipts.count, posture.receiptsAuditedCount)` and rendered literal `(%1$ld / %2$ld denetlendi)`, as well as parameterized calls for `.menuBarWatchedActive`, `.menuBarLastStatus`, `.notificationSigChangeBody`, and `.notificationWatchedIssueBody`.
+- **Zero False-Positive Persistence Audit Calibration (`SystemAudit.auditLaunchPlist`):**
+  - Ignored retired empty `<dict/>` tombstone LaunchAgent/LaunchDaemon plists (such as Google's retired `com.google.keystone.agent.plist`, `com.google.keystone.daemon.plist`, and `com.google.keystone.xpcservice.plist` left after migration to `GoogleUpdater`) that declare no `Label`, `Program`, `ProgramArguments`, `BundleProgram`, `MachServices`, or `Sockets`.
+  - Preserved `IntegrityVerdict.clean` (with an informational `.info` finding and `Active (Quarantined)` pill) when a LaunchAgent, LaunchDaemon, PrivilegedHelperTool, or running process is signed by a valid official Apple / Developer ID certificate chain (`hasOfficialAppleChain == true`) and carries a `com.apple.quarantine` attribute (e.g. `GoogleUpdater` or `EdgeUpdater`).
+- **System Posture Layout & Duplicate Sidebar Back Button Polish (`SystemPostureAuditView` & `ContentView`):**
+  - Removed the duplicate header inside `SystemPostureAuditView`, fixed duplicate `"macOS Sürüm Sürüm..."` window subtitle prefixing, widened posture card grid columns (`minimum: 245`) with multi-line title/detail wrapping so Turkish/Romanian labels never truncate with `...`, removed the redundant bottom `Ana Ekrana Dön` button from `ContentView.sidebarView`, and switched `DiffView` to reuse `settings.strings`.
+
 ## [1.3.0] — 2026-11-13
 
 ### Added

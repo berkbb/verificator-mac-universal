@@ -602,6 +602,15 @@
 "postureStateUnencrypted" = "Necriptat";
 "postureStateGranted" = "Acordat";
 "postureStateNotGranted" = "Neacordat";
+"postureDetailSIPEnabled" = "Protecția fișierelor de sistem și a nucleului este activă.";
+"postureDetailSIPDisabled" = "Protecția integrității sistemului este dezactivată.";
+"postureDetailSIPCustom" = "Configurație csrutil personalizată activă.";
+"postureDetailSSVEnabled" = "Volum de sistem APFS sigilat criptografic activ.";
+"postureDetailSSVDisabled" = "Verificarea volumului rădăcină autentificat este dezactivată.";
+"postureDetailGatekeeperEnabled" = "Evaluările de semnătură și notarizare sunt active.";
+"postureDetailGatekeeperDisabled" = "Evaluările Gatekeeper sunt dezactivate global.";
+"postureDetailSmartVerified" = "Starea hardware de automonitorizare a fost verificată.";
+"postureDetailSmartFailing" = "Discul a raportat un avertisment de defecțiune hardware.";
 "postureOrphanReceiptsSection" = "Chitanțe Terțe Orfane (%1$ld / %2$ld auditate)";
 "postureOrphanReceiptsEmpty" = "Toate chitanțele terțe pkgutil auditate corespund fișierelor instalate pe disc.";
 "postureOrphanReceiptsNote" = "Audit doar în citire: aceste intrări din /private/var/db/receipts indică căi BOM care nu mai există pe disc (de ex. după ștergere manuală în Coș). Folosește comanda de mai jos dacă dorești să le cureți manual.";

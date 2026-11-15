@@ -141,16 +141,68 @@ public final class AppModel {
     @ObservationIgnored private let settings: AppSettings
     @ObservationIgnored private let signatureStore: SignatureTrackerStore
     @ObservationIgnored private var signatureTracker: SignatureTracker
-    @ObservationIgnored private let dockProgress = DockProgress()
+    @ObservationIgnored public let dockProgress: DockProgress
+    @ObservationIgnored public var dockCompletionHoldMilliseconds: Int = 350
+    @ObservationIgnored private var dockProgressFraction: Double?
+    @ObservationIgnored private var dockProgressHideTask: Task<Void, Never>?
 
     public init(
         settings: AppSettings = .shared,
-        signatureStore: SignatureTrackerStore = SignatureTrackerStore()
+        signatureStore: SignatureTrackerStore = SignatureTrackerStore(),
+        dockProgress: DockProgress? = nil
     ) {
         self.settings = settings
         self.signatureStore = signatureStore
         self.signatureTracker = signatureStore.load()
+        self.dockProgress = dockProgress ?? DockProgress()
         updateSuggestionModel()
+    }
+
+    private var hasActiveWorkspaceScan: Bool {
+        isScanning || isBatchScanning || isComparingDiff || isScanningRunning || isScanningPersistence || isScanningPosture || isAssessingGatekeeper
+    }
+
+    internal func beginDockProgress(initialFraction: Double? = 0.08) {
+        dockProgressHideTask?.cancel()
+        dockProgressHideTask = nil
+        dockProgressFraction = initialFraction
+        dockProgress.update(fraction: initialFraction, active: true, enabled: true)
+    }
+
+    internal func updateDockProgress(fraction: Double?) {
+        dockProgressHideTask?.cancel()
+        dockProgressHideTask = nil
+        if let fraction {
+            let clamped = min(1.0, max(0.0, fraction))
+            dockProgressFraction = max(dockProgressFraction ?? 0.0, clamped)
+        }
+        dockProgress.update(fraction: dockProgressFraction, active: true, enabled: true)
+    }
+
+    internal func finishDockProgress(cancelled: Bool = false) {
+        dockProgressHideTask?.cancel()
+        dockProgressHideTask = nil
+        guard !hasActiveWorkspaceScan else { return }
+        if cancelled {
+            dockProgressFraction = nil
+            dockProgress.update(fraction: nil, active: false, enabled: true)
+            return
+        }
+        dockProgressFraction = 1.0
+        dockProgress.update(fraction: 1.0, active: true, enabled: true)
+        let holdMs = dockCompletionHoldMilliseconds
+        if holdMs <= 0 {
+            dockProgressFraction = nil
+            dockProgress.update(fraction: nil, active: false, enabled: true)
+            return
+        }
+        dockProgressHideTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(holdMs))
+            guard let self, !Task.isCancelled, !self.hasActiveWorkspaceScan else { return }
+            self.dockProgressFraction = nil
+            self.dockProgress.update(fraction: nil, active: false, enabled: true)
+            self.dockProgressHideTask = nil
+        }
     }
 
     public func launch() async {
@@ -170,7 +222,11 @@ public final class AppModel {
     }
 
     public func refreshSystemSecurityStatus() {
-        isFullDiskAccessGranted = FullDiskAccess.isGranted
+        let granted = FullDiskAccess.isGranted
+        isFullDiskAccessGranted = granted
+        if let posture = systemPosture, posture.fullDiskAccessGranted != granted {
+            systemPosture = posture.withFullDiskAccess(granted)
+        }
         loginItemService.refresh()
         Task { @MainActor [weak self] in
             await self?.notificationService.refreshAuthorizationStatus()
@@ -340,6 +396,7 @@ public final class AppModel {
             expectedChecksumInput = ""
         }
         currentBundleURL = resolved
+        beginDockProgress(initialFraction: 0.12)
         if !forceRescan, let cached = cachedReports[resolved.path] {
             let execPath: String?
             if cached.targetKind == .appBundle || cached.targetKind == .nestedBundle {
@@ -357,6 +414,7 @@ public final class AppModel {
                 report = cached
                 isScanning = false
                 settings.noteOpened(resolved, verdict: cached.verdict)
+                finishDockProgress(cancelled: false)
                 return
             }
         }
@@ -366,8 +424,19 @@ public final class AppModel {
         let token = ScanCancellationToken()
         activeScanToken = token
 
+        final class WeakModelBox: @unchecked Sendable {
+            @MainActor weak var value: AppModel?
+            @MainActor init(_ value: AppModel) { self.value = value }
+        }
+        let weakBox = WeakModelBox(self)
+
         activeScanTask = Task.detached { [weak self] in
-            let result = ForensicScanner.auditTarget(at: resolved, options: opts, cancellation: token)
+            let result = ForensicScanner.auditTarget(at: resolved, options: opts, cancellation: token) { fraction in
+                Task { @MainActor in
+                    guard let model = weakBox.value, !token.isCancelled, model.scanGeneration == generation else { return }
+                    model.updateDockProgress(fraction: fraction)
+                }
+            }
             await MainActor.run {
                 guard let self, !Task.isCancelled, !token.isCancelled, self.scanGeneration == generation else { return }
                 self.cachedReports[resolved.path] = result
@@ -377,11 +446,13 @@ public final class AppModel {
                 self.isScanning = false
                 self.activeScanTask = nil
                 self.activeScanToken = nil
+                self.finishDockProgress(cancelled: false)
             }
         }
     }
 
     public func cancelCurrentScan(clearBundleSelection: Bool = true) {
+        let wasScanning = isScanning || activeScanTask != nil
         activeScanToken?.cancel()
         activeScanToken = nil
         activeScanTask?.cancel()
@@ -390,6 +461,9 @@ public final class AppModel {
         isScanning = false
         if clearBundleSelection && report == nil {
             currentBundleURL = nil
+        }
+        if wasScanning {
+            finishDockProgress(cancelled: true)
         }
     }
 
@@ -436,6 +510,7 @@ public final class AppModel {
         activeDiffToken?.cancel()
         activeDiffTask?.cancel()
         isComparingDiff = false
+        finishDockProgress(cancelled: true)
         currentDiff = nil
         diffBaselineURL = nil
         diffTargetURL = nil
@@ -464,18 +539,21 @@ public final class AppModel {
     public func runGatekeeperAssessment() {
         guard !isAssessingGatekeeper, let current = report else { return }
         isAssessingGatekeeper = true
+        beginDockProgress(initialFraction: 0.25)
         let targetPath = current.bundlePath
         Task.detached { [weak self] in
             let assessment = ForensicScanner.assessGatekeeper(at: targetPath)
             await MainActor.run {
                 guard let self, var latest = self.report, latest.bundlePath == targetPath else {
                     self?.isAssessingGatekeeper = false
+                    self?.finishDockProgress(cancelled: true)
                     return
                 }
                 latest = latest.withSpctlAssessment(assessment.statusText)
                 self.report = latest
                 self.cachedReports[targetPath] = latest
                 self.isAssessingGatekeeper = false
+                self.finishDockProgress(cancelled: false)
                 AppLog.shared.info(.signature, "Gatekeeper policy assessed for \(latest.bundleName)", detail: assessment.statusText)
             }
         }
@@ -530,7 +608,7 @@ public final class AppModel {
         isBatchMode = true
         isBatchScanning = true
         batchProgress = (0, 0, directoryLabel)
-        dockProgress.update(fraction: nil, active: true, enabled: true)
+        beginDockProgress(initialFraction: 0.05)
         let token = ScanCancellationToken()
         activeBatchToken = token
 
@@ -544,9 +622,10 @@ public final class AppModel {
             let summary = work(token) { index, total, currentName in
                 Task { @MainActor in
                     guard let model = weakBox.value, !token.isCancelled else { return }
-                    model.batchProgress = (index, total, currentName)
-                    let fraction = total > 0 ? Double(index) / Double(total) : nil
-                    model.dockProgress.update(fraction: fraction, active: true, enabled: true)
+                    let current = max(model.batchProgress.current, index)
+                    model.batchProgress = (current, total, currentName)
+                    let fraction = total > 0 ? Double(current) / Double(total) : nil
+                    model.updateDockProgress(fraction: fraction)
                 }
             }
 
@@ -558,20 +637,23 @@ public final class AppModel {
                 }
                 model.batchSummary = summary
                 model.isBatchScanning = false
-                model.dockProgress.update(fraction: nil, active: false, enabled: true)
                 model.activeBatchTask = nil
                 model.activeBatchToken = nil
+                model.finishDockProgress(cancelled: summary.wasCancelled || token.isCancelled)
             }
         }
     }
 
     public func cancelBatchScan() {
+        let wasScanning = isBatchScanning || activeBatchTask != nil
         activeBatchToken?.cancel()
         activeBatchToken = nil
         activeBatchTask?.cancel()
         activeBatchTask = nil
         isBatchScanning = false
-        dockProgress.update(fraction: nil, active: false, enabled: true)
+        if wasScanning {
+            finishDockProgress(cancelled: true)
+        }
     }
 
     public func openBatchReport(_ item: BundleAuditReport) {
@@ -785,7 +867,9 @@ public final class AppModel {
         diffTargetURL = tmpURL
         diffTargetEndpoint = tmpEnd
         if let base = diffBaselineEndpoint, let tgt = diffTargetEndpoint {
+            beginDockProgress(initialFraction: 0.35)
             currentDiff = AuditDiff.compare(baseline: base, target: tgt)
+            finishDockProgress(cancelled: false)
         }
     }
 
@@ -795,6 +879,7 @@ public final class AppModel {
         activeDiffTask?.cancel()
         isComparingDiff = true
         diffError = nil
+        beginDockProgress(initialFraction: 0.10)
 
         let opts = settings.scanOptions
         let cachedBase = (baseURL.pathExtension.lowercased() != "json") ? cachedReports[baseURL.path] : nil
@@ -802,20 +887,44 @@ public final class AppModel {
         let token = ScanCancellationToken()
         activeDiffToken = token
 
+        final class WeakModelBox: @unchecked Sendable {
+            @MainActor weak var value: AppModel?
+            @MainActor init(_ value: AppModel) { self.value = value }
+        }
+        let weakBox = WeakModelBox(self)
+
         activeDiffTask = Task.detached { [weak self] in
             do {
                 let baseEndpoint: AuditDiffEndpoint
                 if let cachedBase {
                     baseEndpoint = AuditDiffEndpoint(sourceDescription: baseURL.path, isFromSavedJSON: false, report: cachedBase)
+                    Task { @MainActor in
+                        guard let model = weakBox.value, !token.isCancelled else { return }
+                        model.updateDockProgress(fraction: 0.50)
+                    }
                 } else {
-                    baseEndpoint = try AuditDiff.loadOrAudit(url: baseURL, options: opts, cancellation: token)
+                    baseEndpoint = try AuditDiff.loadOrAudit(url: baseURL, options: opts, cancellation: token) { fraction in
+                        Task { @MainActor in
+                            guard let model = weakBox.value, !token.isCancelled else { return }
+                            model.updateDockProgress(fraction: 0.10 + fraction * 0.40)
+                        }
+                    }
                 }
 
                 let newEndpoint: AuditDiffEndpoint
                 if let cachedTarget {
                     newEndpoint = AuditDiffEndpoint(sourceDescription: newURL.path, isFromSavedJSON: false, report: cachedTarget)
+                    Task { @MainActor in
+                        guard let model = weakBox.value, !token.isCancelled else { return }
+                        model.updateDockProgress(fraction: 0.90)
+                    }
                 } else {
-                    newEndpoint = try AuditDiff.loadOrAudit(url: newURL, options: opts, cancellation: token)
+                    newEndpoint = try AuditDiff.loadOrAudit(url: newURL, options: opts, cancellation: token) { fraction in
+                        Task { @MainActor in
+                            guard let model = weakBox.value, !token.isCancelled else { return }
+                            model.updateDockProgress(fraction: 0.50 + fraction * 0.40)
+                        }
+                    }
                 }
 
                 let diff = AuditDiff.compare(baseline: baseEndpoint, target: newEndpoint)
@@ -833,6 +942,7 @@ public final class AppModel {
                     self.isComparingDiff = false
                     self.activeDiffTask = nil
                     self.activeDiffToken = nil
+                    self.finishDockProgress(cancelled: false)
                 }
             } catch {
                 await MainActor.run {
@@ -841,6 +951,7 @@ public final class AppModel {
                     self.isComparingDiff = false
                     self.activeDiffTask = nil
                     self.activeDiffToken = nil
+                    self.finishDockProgress(cancelled: true)
                 }
             }
         }
@@ -848,7 +959,7 @@ public final class AppModel {
 
     public func exportDiffMarkdown(redacted: Bool? = nil) {
         guard let diff = currentDiff else { return }
-        let table = StringTable(bundle: .main)
+        let table = settings.strings
         let rawMD = diff.markdown(with: table, language: settings.languageCode)
         let useMask = redacted ?? settings.redactSharedDiagnostics
         let md = useMask ? DiagnosticMasker().redact(text: rawMD) : rawMD
@@ -873,6 +984,7 @@ public final class AppModel {
         workspaceMode = .runningProcesses
         isScanningRunning = true
         runningProgress = (0, 0, "")
+        beginDockProgress(initialFraction: 0.05)
         let opts = settings.scanOptions
         let token = ScanCancellationToken()
         activeRunningToken = token
@@ -887,7 +999,10 @@ public final class AppModel {
             let summary = SystemAudit.auditRunningProcesses(options: opts, cancellation: token) { index, total, name in
                 Task { @MainActor in
                     guard let model = weakBox.value, !token.isCancelled else { return }
-                    model.runningProgress = (index, total, name)
+                    let current = max(model.runningProgress.current, index)
+                    model.runningProgress = (current, total, name)
+                    let fraction = total > 0 ? Double(current) / Double(total) : nil
+                    model.updateDockProgress(fraction: fraction)
                 }
             }
             await MainActor.run {
@@ -896,16 +1011,21 @@ public final class AppModel {
                 model.isScanningRunning = false
                 model.activeRunningTask = nil
                 model.activeRunningToken = nil
+                model.finishDockProgress(cancelled: summary.wasCancelled || token.isCancelled)
             }
         }
     }
 
     public func cancelRunningProcessesScan() {
+        let wasScanning = isScanningRunning || activeRunningTask != nil
         activeRunningToken?.cancel()
         activeRunningToken = nil
         activeRunningTask?.cancel()
         activeRunningTask = nil
         isScanningRunning = false
+        if wasScanning {
+            finishDockProgress(cancelled: true)
+        }
     }
 
     public func openPersistenceMode(startImmediately: Bool = false) {
@@ -920,6 +1040,7 @@ public final class AppModel {
         workspaceMode = .persistence
         isScanningPersistence = true
         persistenceProgress = (0, 0, "")
+        beginDockProgress(initialFraction: 0.05)
         let opts = settings.scanOptions
         let token = ScanCancellationToken()
         activePersistenceToken = token
@@ -934,7 +1055,10 @@ public final class AppModel {
             let summary = SystemAudit.auditPersistence(options: opts, cancellation: token) { index, total, name in
                 Task { @MainActor in
                     guard let model = weakBox.value, !token.isCancelled else { return }
-                    model.persistenceProgress = (index, total, name)
+                    let current = max(model.persistenceProgress.current, index)
+                    model.persistenceProgress = (current, total, name)
+                    let fraction = total > 0 ? Double(current) / Double(total) : nil
+                    model.updateDockProgress(fraction: fraction)
                 }
             }
             await MainActor.run {
@@ -943,16 +1067,21 @@ public final class AppModel {
                 model.isScanningPersistence = false
                 model.activePersistenceTask = nil
                 model.activePersistenceToken = nil
+                model.finishDockProgress(cancelled: summary.wasCancelled || token.isCancelled)
             }
         }
     }
 
     public func cancelPersistenceScan() {
+        let wasScanning = isScanningPersistence || activePersistenceTask != nil
         activePersistenceToken?.cancel()
         activePersistenceToken = nil
         activePersistenceTask?.cancel()
         activePersistenceTask = nil
         isScanningPersistence = false
+        if wasScanning {
+            finishDockProgress(cancelled: true)
+        }
     }
 
     public func inspectSystemAuditTarget(at path: String) {
@@ -973,14 +1102,32 @@ public final class AppModel {
     public func refreshSystemPosture() {
         activePostureTask?.cancel()
         isScanningPosture = true
+        beginDockProgress(initialFraction: 0.08)
+
+        final class WeakModelBox: @unchecked Sendable {
+            @MainActor weak var value: AppModel?
+            @MainActor init(_ value: AppModel) { self.value = value }
+        }
+        let weakBox = WeakModelBox(self)
+
         activePostureTask = Task.detached { [weak self] in
-            let posture = SystemSecurityPostureAuditor.collect()
+            let posture = SystemSecurityPostureAuditor.collect { current, total in
+                Task { @MainActor in
+                    guard let model = weakBox.value, !Task.isCancelled else { return }
+                    let fraction = total > 0 ? Double(current) / Double(total) : nil
+                    model.updateDockProgress(fraction: fraction)
+                }
+            }
             await MainActor.run {
-                guard let self, !Task.isCancelled else { return }
+                guard let self, !Task.isCancelled else {
+                    self?.finishDockProgress(cancelled: true)
+                    return
+                }
                 self.systemPosture = posture
                 self.isScanningPosture = false
                 self.isFullDiskAccessGranted = posture.fullDiskAccessGranted
                 self.activePostureTask = nil
+                self.finishDockProgress(cancelled: false)
                 AppLog.shared.info(
                     .scanner,
                     "System security posture audited",
@@ -1056,7 +1203,12 @@ public final class AppModel {
             signatureChangeModal = change
             signatureChangeModalReport = audited
             let title = settings.t(.notificationSigChangeTitle, audited.bundleName)
-            let body = settings.t(.notificationSigChangeBody, change.previousSignerDisplay, change.currentSignerDisplay)
+            let body = settings.t(
+                .notificationSigChangeBody,
+                audited.bundleName,
+                change.previousSignerDisplay,
+                change.currentSignerDisplay
+            )
             AppLog.shared.warning(.signature, "Watched folder detected signer change for \(audited.bundleName)")
             Task { @MainActor in
                 await notificationService.postAlert(
@@ -1072,7 +1224,12 @@ public final class AppModel {
         if audited.verdict != .clean {
             let verdictLabel = settings.t(audited.verdict == .tampered ? .verdictTampered : .verdictWarning)
             let title = settings.t(.notificationWatchedIssueTitle, audited.bundleName)
-            let body = settings.t(.notificationWatchedIssueBody, audited.bundleName, verdictLabel)
+            let body = settings.t(
+                .notificationWatchedIssueBody,
+                audited.bundleName,
+                verdictLabel,
+                audited.findings.count
+            )
             AppLog.shared.warning(.scanner, "Watched folder flagged \(audited.bundleName) as \(audited.verdict.rawValue)")
             Task { @MainActor in
                 await notificationService.postAlert(

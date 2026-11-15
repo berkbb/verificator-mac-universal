@@ -639,6 +639,7 @@ struct SystemPostureAuditView: View {
             }
         }
         .onAppear {
+            model.refreshSystemSecurityStatus()
             if model.systemPosture == nil && !model.isScanningPosture {
                 model.refreshSystemPosture()
             }
@@ -646,16 +647,13 @@ struct SystemPostureAuditView: View {
     }
 
     private func postureContent(_ posture: SystemSecurityPosture) -> some View {
-        ScrollView {
+        let fdaGranted = model.isFullDiskAccessGranted || posture.fullDiskAccessGranted
+        return ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(settings.t(.postureTitle))
-                            .font(.title3.bold())
-                        Text("\(posture.hardwareModel) · \(posture.macOSVersion) · \(posture.cpuArchitecture)")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    Label("\(posture.hardwareModel) · \(posture.macOSVersion) · \(posture.cpuArchitecture)", systemImage: "desktopcomputer")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
                     Spacer()
                     Button {
                         model.openDiagnosticReportSheet()
@@ -678,25 +676,28 @@ struct SystemPostureAuditView: View {
                     .accessibilityLabel(settings.t(.postureRefreshButton))
                 }
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 12)], spacing: 12) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 245), spacing: 12)], spacing: 12) {
                     postureCard(
                         title: settings.t(.postureCardSIP),
                         stateText: label(for: posture.sipStatus),
-                        detail: posture.sipDetail,
+                        detail: sipDetailText(for: posture),
+                        rawTooltip: posture.sipDetail,
                         icon: "lock.shield.fill",
                         tint: tint(for: posture.sipStatus)
                     )
                     postureCard(
                         title: settings.t(.postureCardSSV),
                         stateText: label(for: posture.ssvStatus),
-                        detail: posture.ssvDetail,
+                        detail: ssvDetailText(for: posture),
+                        rawTooltip: posture.ssvDetail,
                         icon: "internaldrive.fill",
                         tint: tint(for: posture.ssvStatus)
                     )
                     postureCard(
                         title: settings.t(.postureCardGatekeeper),
                         stateText: label(for: posture.gatekeeperMasterStatus),
-                        detail: posture.gatekeeperDetail,
+                        detail: gatekeeperDetailText(for: posture),
+                        rawTooltip: posture.gatekeeperDetail,
                         icon: "checkmark.seal.fill",
                         tint: tint(for: posture.gatekeeperMasterStatus)
                     )
@@ -725,29 +726,37 @@ struct SystemPostureAuditView: View {
                     postureCard(
                         title: settings.t(.postureCardSmart),
                         stateText: label(for: posture.smartHealthStatus),
-                        detail: posture.smartDetail,
+                        detail: smartDetailText(for: posture),
+                        rawTooltip: posture.smartDetail,
                         icon: "externaldrive.badge.checkmark",
                         tint: tint(for: posture.smartHealthStatus)
                     )
                     postureCard(
                         title: settings.t(.postureCardFDA),
-                        stateText: settings.t(posture.fullDiskAccessGranted ? .postureStateGranted : .postureStateNotGranted),
-                        detail: settings.t(posture.fullDiskAccessGranted ? .fdaStatusGranted : .fdaStatusMissing),
-                        icon: posture.fullDiskAccessGranted ? "lock.open.fill" : "lock.fill",
-                        tint: posture.fullDiskAccessGranted ? .green : .orange,
-                        actionTitle: posture.fullDiskAccessGranted ? nil : settings.t(.fdaOpenSettings),
+                        stateText: settings.t(fdaGranted ? .postureStateGranted : .postureStateNotGranted),
+                        detail: settings.t(fdaGranted ? .fdaStatusGranted : .fdaStatusMissing),
+                        icon: fdaGranted ? "lock.open.fill" : "lock.fill",
+                        tint: fdaGranted ? .green : .orange,
+                        actionTitle: fdaGranted ? nil : settings.t(.fdaOpenSettings),
                         action: { FullDiskAccess.openSystemSettings() }
                     )
                     postureCard(
                         title: settings.t(.postureCardReceipts),
                         stateText: "\(posture.orphanedReceipts.count) / \(posture.receiptsAuditedCount)",
-                        detail: settings.t(posture.orphanedReceipts.isEmpty ? .postureOrphanReceiptsEmpty : .postureOrphanReceiptsSection),
+                        detail: posture.orphanedReceipts.isEmpty
+                            ? settings.t(.postureOrphanReceiptsEmpty)
+                            : settings.t(.postureOrphanReceiptsSection, posture.orphanedReceipts.count, posture.receiptsAuditedCount),
                         icon: "shippingbox.fill",
                         tint: posture.orphanedReceipts.isEmpty ? .green : .orange
                     )
                 }
 
-                GroupBox(label: Label(settings.t(.postureOrphanReceiptsSection), systemImage: "tray.full").font(.headline)) {
+                GroupBox(
+                    label: Label(
+                        settings.t(.postureOrphanReceiptsSection, posture.orphanedReceipts.count, posture.receiptsAuditedCount),
+                        systemImage: "tray.full"
+                    ).font(.headline)
+                ) {
                     VStack(alignment: .leading, spacing: 10) {
                         Text(settings.t(.postureOrphanReceiptsNote))
                             .font(.caption)
@@ -827,24 +836,59 @@ struct SystemPostureAuditView: View {
         }
     }
 
+    private func sipDetailText(for posture: SystemSecurityPosture) -> String {
+        switch posture.sipStatus {
+        case .enabled: return settings.t(.postureDetailSIPEnabled)
+        case .disabled: return settings.t(.postureDetailSIPDisabled)
+        case .custom: return settings.t(.postureDetailSIPCustom)
+        default: return posture.sipDetail
+        }
+    }
+
+    private func ssvDetailText(for posture: SystemSecurityPosture) -> String {
+        switch posture.ssvStatus {
+        case .enabled: return settings.t(.postureDetailSSVEnabled)
+        case .disabled: return settings.t(.postureDetailSSVDisabled)
+        default: return posture.ssvDetail
+        }
+    }
+
+    private func gatekeeperDetailText(for posture: SystemSecurityPosture) -> String {
+        switch posture.gatekeeperMasterStatus {
+        case .enabled: return settings.t(.postureDetailGatekeeperEnabled)
+        case .disabled: return settings.t(.postureDetailGatekeeperDisabled)
+        default: return posture.gatekeeperDetail
+        }
+    }
+
+    private func smartDetailText(for posture: SystemSecurityPosture) -> String {
+        switch posture.smartHealthStatus {
+        case .verified: return settings.t(.postureDetailSmartVerified)
+        case .failing: return settings.t(.postureDetailSmartFailing)
+        default: return posture.smartDetail
+        }
+    }
+
     private func postureCard(
         title: String,
         stateText: String,
         detail: String,
+        rawTooltip: String? = nil,
         icon: String,
         tint: Color,
         actionTitle: String? = nil,
         action: (() -> Void)? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
                 Image(systemName: icon)
                     .foregroundStyle(tint)
                 Text(title)
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer()
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
             }
             Text(stateText)
                 .font(.headline)
@@ -852,7 +896,8 @@ struct SystemPostureAuditView: View {
             Text(detail)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .lineLimit(2)
+                .lineLimit(3)
+                .fixedSize(horizontal: false, vertical: true)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .buttonStyle(.bordered)
@@ -863,5 +908,6 @@ struct SystemPostureAuditView: View {
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.quaternary.opacity(0.25), in: RoundedRectangle(cornerRadius: 10))
+        .help(rawTooltip ?? detail)
     }
 }

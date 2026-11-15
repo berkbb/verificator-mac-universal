@@ -80,6 +80,14 @@ struct SystemSecurityFeaturesTests {
         FileManager.default.createFile(atPath: safariDir.appendingPathComponent("Bookmarks.plist").path, contents: Data("bplist".utf8))
 
         #expect(FullDiskAccess.isGranted(homeDirectoryURL: dir))
+
+        // Verify directory-only TCC probe (e.g. when Bookmarks.plist does not exist on a clean macOS 26/27 profile)
+        let dirOnlyHome = try makeTempDir(prefix: "verificator-fda-dironly")
+        defer { try? FileManager.default.removeItem(at: dirOnlyHome) }
+        #expect(!FullDiskAccess.isGranted(homeDirectoryURL: dirOnlyHome))
+        let tccDir = dirOnlyHome.appendingPathComponent("Library/Application Support/com.apple.TCC", isDirectory: true)
+        try FileManager.default.createDirectory(at: tccDir, withIntermediateDirectories: true)
+        #expect(FullDiskAccess.isGranted(homeDirectoryURL: dirOnlyHome))
     }
 
     @Test("RevocationChecker Maps Revocation Status Codes & Backward-Compatible Models")
@@ -296,5 +304,128 @@ struct SystemSecurityFeaturesTests {
         model.acknowledgeSignatureBaselineChange()
         #expect(model.signatureChange == nil)
         #expect(store.load().entries["/Applications/DemoModel.app"]?.teamIdentifier == "TEAMBBB222")
+    }
+
+    @Test("SystemSecurityPosture withFullDiskAccess Synchronizes State Cleanly")
+    func systemSecurityPostureWithFullDiskAccess() {
+        let initial = SystemSecurityPosture(
+            scannedAt: "2026-11-15T12:00:00Z",
+            macOSVersion: "Version 27.0.1",
+            kernelRelease: "26.0.0",
+            hardwareModel: "Mac14,2",
+            cpuArchitecture: "arm64",
+            sipStatus: .enabled,
+            sipDetail: "enabled",
+            ssvStatus: .enabled,
+            ssvDetail: "enabled",
+            gatekeeperMasterStatus: .enabled,
+            gatekeeperDetail: "assessments enabled",
+            fileVaultBootEncrypted: true,
+            bootVolumeName: "Macintosh HD",
+            bootVolumeFormat: "APFS",
+            firewallEnabled: true,
+            firewallStealthMode: false,
+            smartHealthStatus: .verified,
+            smartDetail: "Verified",
+            fullDiskAccessGranted: false,
+            orphanedReceipts: [],
+            receiptsAuditedCount: 56
+        )
+        let updated = initial.withFullDiskAccess(true)
+        #expect(!initial.fullDiskAccessGranted)
+        #expect(updated.fullDiskAccessGranted)
+        #expect(updated.receiptsAuditedCount == 56)
+    }
+
+    @Test("SystemAudit Persistence Skips Retired Empty <dict/> Tombstone Plists")
+    func persistenceSkipsEmptyTombstonePlists() throws {
+        let dir = try makeTempDir(prefix: "verificator-persist-tombstone")
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Empty <dict/> tombstone (e.g. Chrome Keystone migration stub)
+        let emptyPlistData = try PropertyListSerialization.data(fromPropertyList: [String: Any](), format: .xml, options: 0)
+        try emptyPlistData.write(to: dir.appendingPathComponent("com.google.keystone.agent.plist"))
+
+        // Valid launch agent plist
+        let validPlist: [String: Any] = [
+            "Label": "com.example.valid",
+            "ProgramArguments": ["/usr/bin/true"],
+            "RunAtLoad": true,
+        ]
+        let validData = try PropertyListSerialization.data(fromPropertyList: validPlist, format: .xml, options: 0)
+        try validData.write(to: dir.appendingPathComponent("com.example.valid.plist"))
+
+        let summary = SystemAudit.auditPersistence(directories: [(.systemAgent, dir)])
+        #expect(summary.totalCount == 1)
+        #expect(summary.missingExecutableCount == 0)
+        #expect(summary.items.first?.label == "com.example.valid")
+    }
+
+    @Test("All Parameterized LKey Strings Are Never Invoked Without Format Arguments")
+    func noParameterizedLKeyCalledWithoutArguments() throws {
+        let repoRoot = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let trStringsURL = repoRoot.appendingPathComponent("Resources/tr.lproj/Localizable.strings")
+        let trContent = try String(contentsOf: trStringsURL, encoding: .utf8)
+        let trDict = try #require(
+            PropertyListSerialization.propertyList(from: Data(trContent.utf8), options: [], format: nil) as? [String: String]
+        )
+
+        let formatPlaceholderRegex = try NSRegularExpression(pattern: #"%(?:\d+\$)?(?:[@dDuUxXoOfeEgGcCsSpaA]|l[duxXo])"#)
+        var parameterizedCases: Set<String> = []
+        for lkey in LKey.allCases {
+            if let val = trDict[lkey.rawValue] {
+                let range = NSRange(val.startIndex..<val.endIndex, in: val)
+                if formatPlaceholderRegex.firstMatch(in: val, range: range) != nil {
+                    parameterizedCases.insert(String(describing: lkey))
+                }
+            }
+        }
+        #expect(parameterizedCases.contains("postureOrphanReceiptsSection"))
+        #expect(!parameterizedCases.contains("aboutEngineCredit"))
+
+        // Verify formatting postureOrphanReceiptsSection produces clean numbers and no literal %1$ld / %2$ld
+        let table = StringTable(bundle: .main)
+        for lang in ["tr", "en", "ro"] {
+            let formatted = table.format(.postureOrphanReceiptsSection, language: lang, 0, 56)
+            #expect(formatted.contains("0"))
+            #expect(formatted.contains("56"))
+            #expect(!formatted.contains("%1$"))
+            #expect(!formatted.contains("%2$"))
+        }
+
+        // Scan Swift sources to ensure no parameterized LKey is called with 0 format arguments
+        let sourcesDir = repoRoot.appendingPathComponent("Sources")
+        let enumerator = FileManager.default.enumerator(at: sourcesDir, includingPropertiesForKeys: nil)
+        let zeroArgPattern = try NSRegularExpression(pattern: #"\.t\(\s*\.([A-Za-z0-9_]+)\s*\)"#)
+        let ternaryPattern = try NSRegularExpression(pattern: #"\.t\([^,)]*\?\s*\.([A-Za-z0-9_]+)\s*:\s*\.([A-Za-z0-9_]+)\s*\)"#)
+
+        while let fileURL = enumerator?.nextObject() as? URL {
+            guard fileURL.pathExtension == "swift" else { continue }
+            let source = try String(contentsOf: fileURL, encoding: .utf8)
+            let nsRange = NSRange(source.startIndex..<source.endIndex, in: source)
+            for match in zeroArgPattern.matches(in: source, range: nsRange) {
+                if let range = Range(match.range(at: 1), in: source) {
+                    let keyName = String(source[range])
+                    #expect(
+                        !parameterizedCases.contains(keyName),
+                        "Parameterized LKey .\(keyName) called with 0 arguments in \(fileURL.lastPathComponent)"
+                    )
+                }
+            }
+            for match in ternaryPattern.matches(in: source, range: nsRange) {
+                for groupIdx in [1, 2] {
+                    if let range = Range(match.range(at: groupIdx), in: source) {
+                        let keyName = String(source[range])
+                        #expect(
+                            !parameterizedCases.contains(keyName),
+                            "Parameterized LKey .\(keyName) called in 0-arg ternary in \(fileURL.lastPathComponent)"
+                        )
+                    }
+                }
+            }
+        }
     }
 }

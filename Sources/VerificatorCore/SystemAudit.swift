@@ -302,13 +302,12 @@ public enum SystemAudit {
             let name = entry.url.lastPathComponent
             onProgress?(idx + 1, entries.count, name)
 
-            let item: PersistenceAuditItem
             if entry.scope == .privilegedHelper {
-                item = auditPrivilegedHelper(at: entry.url, options: options, cancellation: cancellation, cache: &binaryCache)
-            } else {
-                item = auditLaunchPlist(at: entry.url, scope: entry.scope, options: options, cancellation: cancellation, cache: &binaryCache)
+                let item = auditPrivilegedHelper(at: entry.url, options: options, cancellation: cancellation, cache: &binaryCache)
+                items.append(item)
+            } else if let item = auditLaunchPlist(at: entry.url, scope: entry.scope, options: options, cancellation: cancellation, cache: &binaryCache) {
+                items.append(item)
             }
-            items.append(item)
         }
 
         let sorted = items.sorted { lhs, rhs in
@@ -336,7 +335,7 @@ public enum SystemAudit {
         options: ScanOptions,
         cancellation: ScanCancellationToken?,
         cache: inout [String: BinaryForensicBaseline]
-    ) -> PersistenceAuditItem {
+    ) -> PersistenceAuditItem? {
         let fm = FileManager.default
         let fallbackLabel = plistURL.deletingPathExtension().lastPathComponent
         var label = fallbackLabel
@@ -347,6 +346,17 @@ public enum SystemAudit {
 
         if let data = try? Data(contentsOf: plistURL),
            let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any] {
+            // Skip retired empty `<dict/>` tombstone plists (e.g. Chrome Keystone -> GoogleUpdater migration stubs)
+            let hasLaunchdKeys = plist["Label"] != nil
+                || plist["Program"] != nil
+                || plist["ProgramArguments"] != nil
+                || plist["BundleProgram"] != nil
+                || plist["MachServices"] != nil
+                || plist["Sockets"] != nil
+                || plist["EnvironmentVariables"] != nil
+            if plist.isEmpty || !hasLaunchdKeys {
+                return nil
+            }
             if let rawLabel = plist["Label"] as? String, !rawLabel.isEmpty {
                 label = rawLabel
             }
@@ -404,10 +414,11 @@ public enum SystemAudit {
             )
         }
 
+        let hasOfficialChain = baseline?.hasOfficialAppleChain ?? false
         if plistQuarantined && !(baseline?.isQuarantined ?? false) {
             findings.append(
                 ForensicFinding(
-                    severity: .warning,
+                    severity: hasOfficialChain ? .info : .warning,
                     titleKey: .fieldQuarantine,
                     descKey: .valueQuarantined,
                     detailSuffix: " (\(plistURL.lastPathComponent))"
@@ -432,7 +443,7 @@ public enum SystemAudit {
         let verdict: IntegrityVerdict
         if dyldInsertValue != nil || baseline?.verdict == .tampered || findings.contains(where: { $0.severity == .critical }) {
             verdict = .tampered
-        } else if !exists || isQuarantined || !deceptiveNames.isEmpty || baseline?.verdict == .warning || findings.contains(where: { $0.severity == .warning }) {
+        } else if !exists || (isQuarantined && !hasOfficialChain) || !deceptiveNames.isEmpty || baseline?.verdict == .warning || findings.contains(where: { $0.severity == .warning }) {
             verdict = .warning
         } else {
             verdict = .clean
@@ -481,7 +492,7 @@ public enum SystemAudit {
         let verdict: IntegrityVerdict
         if baseline.verdict == .tampered {
             verdict = .tampered
-        } else if baseline.isQuarantined || baseline.isUnsigned || !deceptiveNames.isEmpty || baseline.verdict == .warning {
+        } else if (baseline.isQuarantined && !baseline.hasOfficialAppleChain) || baseline.isUnsigned || !deceptiveNames.isEmpty || baseline.verdict == .warning {
             if baseline.isUnsigned {
                 findings.append(
                     ForensicFinding(
@@ -694,7 +705,7 @@ public enum SystemAudit {
                     let verdict: IntegrityVerdict
                     if !proc.dyldInsertLibraries.isEmpty || baseline.verdict == .tampered || liveVerification.hasDynamicSignatureMismatch {
                         verdict = .tampered
-                    } else if baseline.isQuarantined || !deceptiveNames.isEmpty || baseline.verdict == .warning || !liveVerification.unsignedMappedLibraries.isEmpty {
+                    } else if (baseline.isQuarantined && !baseline.hasOfficialAppleChain) || !deceptiveNames.isEmpty || baseline.verdict == .warning || !liveVerification.unsignedMappedLibraries.isEmpty {
                         verdict = .warning
                     } else {
                         verdict = .clean

@@ -602,6 +602,15 @@
 "postureStateUnencrypted" = "Şifresiz";
 "postureStateGranted" = "Verildi";
 "postureStateNotGranted" = "Verilmedi";
+"postureDetailSIPEnabled" = "Sistem dosyaları ve çekirdek koruması etkin.";
+"postureDetailSIPDisabled" = "Sistem bütünlüğü koruması devre dışı.";
+"postureDetailSIPCustom" = "Özel csrutil yapılandırması etkin.";
+"postureDetailSSVEnabled" = "Kriptografik imzalı APFS sistem birimi etkin.";
+"postureDetailSSVDisabled" = "İmzalı kök birim doğrulaması devre dışı.";
+"postureDetailGatekeeperEnabled" = "Uygulama imza ve noter tasdiki denetimleri etkin.";
+"postureDetailGatekeeperDisabled" = "Gatekeeper değerlendirmeleri genel olarak devre dışı.";
+"postureDetailSmartVerified" = "Donanım öz-izleme sağlık durumu doğrulandı.";
+"postureDetailSmartFailing" = "Disk donanım arızası uyarısı bildirdi.";
 "postureOrphanReceiptsSection" = "Sahipsiz Üçüncü Taraf Paket Makbuzları (%1$ld / %2$ld denetlendi)";
 "postureOrphanReceiptsEmpty" = "Denetlenen tüm üçüncü taraf pkgutil makbuzları diskteki kurulu dosyalarla eşleşiyor.";
 "postureOrphanReceiptsNote" = "Salt-okunur denetim: /private/var/db/receipts altındaki bu kayıtların BOM dosya yolları artık diskte bulunmuyor (ör. Çöp Sepeti'ne elle taşıma sonrası). Eski makbuzları silmek isterseniz komutu kopyalayıp manuel çalıştırabilirsiniz.";

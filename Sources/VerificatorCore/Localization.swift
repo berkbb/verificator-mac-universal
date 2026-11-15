@@ -307,5 +307,9 @@ public enum LKey: String, CaseIterable, Sendable, Codable {
     case postureCardFirewall, postureCardSmart, postureCardFDA, postureCardReceipts
     case postureStateEnabled, postureStateDisabled, postureStateCustom, postureStateVerified, postureStateFailing
     case postureStateUnknown, postureStateEncrypted, postureStateUnencrypted, postureStateGranted, postureStateNotGranted
+    case postureDetailSIPEnabled, postureDetailSIPDisabled, postureDetailSIPCustom
+    case postureDetailSSVEnabled, postureDetailSSVDisabled
+    case postureDetailGatekeeperEnabled, postureDetailGatekeeperDisabled
+    case postureDetailSmartVerified, postureDetailSmartFailing
     case postureOrphanReceiptsSection, postureOrphanReceiptsEmpty, postureOrphanReceiptsNote, postureOrphanForgetCopy
 }

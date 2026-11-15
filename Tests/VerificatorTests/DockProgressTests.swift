@@ -75,4 +75,36 @@ struct DockProgressTests {
         #expect(isBrightGreen(half.colorAt(x: Int(50 * scale), y: barY)))
         #expect(!isBrightGreen(half.colorAt(x: Int(100 * scale), y: barY)))
     }
+
+    @Test("AppModel coordinates monotonic Dock progress and completion hold across all sidebar modes")
+    func appModelCoordinatesDockProgressLifecycle() async throws {
+        let tile = FakeDockTile()
+        let dock = DockProgress(tile: tile)
+        let model = AppModel(settings: AppSettings(), dockProgress: dock)
+        model.dockCompletionHoldMilliseconds = 40
+
+        // 1. Begin progress
+        model.beginDockProgress(initialFraction: 0.10)
+        #expect(dock.lastState == DockTileState(showsBar: true, percent: 10))
+
+        // 2. Monotonic updates never jump backward
+        model.updateDockProgress(fraction: 0.55)
+        #expect(dock.lastState == DockTileState(showsBar: true, percent: 55))
+        model.updateDockProgress(fraction: 0.30)
+        #expect(dock.lastState == DockTileState(showsBar: true, percent: 55))
+
+        // 3. Finishing a scan shows 100% briefly, then clears automatically
+        model.finishDockProgress(cancelled: false)
+        #expect(dock.lastState == DockTileState(showsBar: true, percent: 100))
+
+        try await Task.sleep(for: .milliseconds(120))
+        #expect(dock.lastState == DockTileState(showsBar: false, percent: nil))
+        #expect(tile.contentView == nil)
+
+        // 4. Cancelled scan clears immediately
+        model.beginDockProgress(initialFraction: 0.25)
+        #expect(dock.lastState == DockTileState(showsBar: true, percent: 25))
+        model.finishDockProgress(cancelled: true)
+        #expect(dock.lastState == DockTileState(showsBar: false, percent: nil))
+    }
 }

@@ -90,9 +90,18 @@ private struct MenuBarExtraMenuView: View {
             model.openSystemPostureMode(startImmediately: true)
         }
         Divider()
-        Text(settings.t(model.watchedFolderService.isRunning ? .menuBarWatchedActive : .menuBarWatchedPaused))
+        Text(
+            model.watchedFolderService.isRunning
+                ? settings.t(.menuBarWatchedActive, settings.watchedFolderPaths.count)
+                : settings.t(.menuBarWatchedPaused)
+        )
         if let lastTarget = model.watchedFolderService.lastAuditedTarget {
-            Text(settings.t(.menuBarLastStatus) + ": \(lastTarget)")
+            let verdictKey: LKey = switch model.watchedFolderService.lastAuditedVerdict ?? .clean {
+            case .clean: .verdictClean
+            case .warning: .verdictWarning
+            case .tampered: .verdictTampered
+            }
+            Text(settings.t(.menuBarLastStatus, lastTarget, settings.t(verdictKey)))
         }
         if !settings.watchedFolderPaths.isEmpty {
             Button(settings.t(.watchedScanNow)) {

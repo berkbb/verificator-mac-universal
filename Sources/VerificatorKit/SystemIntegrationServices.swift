@@ -158,6 +158,7 @@ public final class WatchedFolderService {
     public private(set) var isScanningNow = false
     public private(set) var lastScanDate: Date?
     public private(set) var lastAuditedTarget: String?
+    public private(set) var lastAuditedVerdict: IntegrityVerdict?
     public private(set) var lastIssueCount = 0
 
     @ObservationIgnored private var monitorTask: Task<Void, Never>?
@@ -281,6 +282,7 @@ public final class WatchedFolderService {
                 ForensicScanner.auditTarget(at: url, options: scanOptions)
             }.value
             lastAuditedTarget = audited.bundleName
+            lastAuditedVerdict = audited.verdict
             if audited.verdict != .clean {
                 issues += 1
             }

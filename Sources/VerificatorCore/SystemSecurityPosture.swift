@@ -114,6 +114,33 @@ public struct SystemSecurityPosture: Sendable, Equatable, Codable {
         return try encoder.encode(self)
     }
 
+    public func withFullDiskAccess(_ granted: Bool) -> SystemSecurityPosture {
+        guard granted != fullDiskAccessGranted else { return self }
+        return SystemSecurityPosture(
+            scannedAt: scannedAt,
+            macOSVersion: macOSVersion,
+            kernelRelease: kernelRelease,
+            hardwareModel: hardwareModel,
+            cpuArchitecture: cpuArchitecture,
+            sipStatus: sipStatus,
+            sipDetail: sipDetail,
+            ssvStatus: ssvStatus,
+            ssvDetail: ssvDetail,
+            gatekeeperMasterStatus: gatekeeperMasterStatus,
+            gatekeeperDetail: gatekeeperDetail,
+            fileVaultBootEncrypted: fileVaultBootEncrypted,
+            bootVolumeName: bootVolumeName,
+            bootVolumeFormat: bootVolumeFormat,
+            firewallEnabled: firewallEnabled,
+            firewallStealthMode: firewallStealthMode,
+            smartHealthStatus: smartHealthStatus,
+            smartDetail: smartDetail,
+            fullDiskAccessGranted: granted,
+            orphanedReceipts: orphanedReceipts,
+            receiptsAuditedCount: receiptsAuditedCount
+        )
+    }
+
     public func redacted(using masker: DiagnosticMasker) -> SystemSecurityPosture {
         SystemSecurityPosture(
             scannedAt: scannedAt,
@@ -154,7 +181,8 @@ public enum SystemSecurityPostureAuditor {
 
     public static func collect(
         includeOrphanReceipts: Bool = true,
-        cancellation: ScanCancellationToken? = nil
+        cancellation: ScanCancellationToken? = nil,
+        onProgress: (@Sendable (_ current: Int, _ total: Int) -> Void)? = nil
     ) -> SystemSecurityPosture {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -170,30 +198,44 @@ public enum SystemSecurityPostureAuditor {
         let arch = "unknown"
         #endif
 
+        let baseSteps = 6
+        let totalSteps = includeOrphanReceipts ? 12 : baseSteps
+        onProgress?(1, totalSteps)
+
         let sipRaw = runReadOnlyTool("/usr/bin/csrutil", args: ["status"], cancellation: cancellation)
         let (sipStatus, sipDetail) = parseCsrutilStatus(sipRaw)
+        onProgress?(2, totalSteps)
 
         let ssvRaw = runReadOnlyTool("/usr/bin/csrutil", args: ["authenticated-root", "status"], cancellation: cancellation)
         let (ssvStatus, ssvDetail) = parseAuthenticatedRootStatus(ssvRaw)
+        onProgress?(3, totalSteps)
 
         let spctlRaw = runReadOnlyTool("/usr/sbin/spctl", args: ["--status"], cancellation: cancellation)
         let (gkStatus, gkDetail) = parseGatekeeperStatus(spctlRaw)
+        onProgress?(4, totalSteps)
 
         let bootVolume = VolumeEncryptionInfo.read(for: URL(fileURLWithPath: "/"))
         let firewall = ApplicationFirewall.readSystemStatus(cancellation: cancellation)
+        onProgress?(5, totalSteps)
 
         let diskRaw = runReadOnlyTool("/usr/sbin/diskutil", args: ["info", "/"], cancellation: cancellation)
         let (smartStatus, smartDetail) = parseDiskutilSmartStatus(diskRaw)
         let bootEncrypted = VolumeEncryptionInfo.parseDiskutilFileVault(diskRaw) ?? bootVolume?.isEncrypted
 
         let fdaGranted = FullDiskAccess.isGranted
+        onProgress?(6, totalSteps)
 
         let receiptResult: (orphans: [OrphanedPackageReceipt], count: Int)
         if includeOrphanReceipts && cancellation?.isCancelled != true {
-            receiptResult = auditOrphanedReceipts(cancellation: cancellation)
+            receiptResult = auditOrphanedReceipts(cancellation: cancellation) { current, total in
+                guard total > 0 else { return }
+                let scaled = baseSteps + min(6, max(1, Int((Double(current) / Double(total) * 6.0).rounded())))
+                onProgress?(scaled, totalSteps)
+            }
         } else {
             receiptResult = ([], 0)
         }
+        onProgress?(totalSteps, totalSteps)
 
         return SystemSecurityPosture(
             scannedAt: formatter.string(from: Date()),
@@ -304,17 +346,20 @@ public enum SystemSecurityPostureAuditor {
         in directory: URL = receiptsDirectory,
         cancellation: ScanCancellationToken? = nil,
         fileManager: FileManager = .default,
-        samplePayloadLimit: Int = 48
+        samplePayloadLimit: Int = 48,
+        onProgress: (@Sendable (_ current: Int, _ total: Int) -> Void)? = nil
     ) -> (orphans: [OrphanedPackageReceipt], count: Int) {
         guard let entries = DirectoryEntries.list(at: directory, includeHidden: false) else {
             return ([], 0)
         }
         let plistEntries = entries.filter { $0.kind == .regularFile && $0.name.lowercased().hasSuffix(".plist") }
+        let totalPlists = plistEntries.count
         var orphans: [OrphanedPackageReceipt] = []
         var audited = 0
 
-        for entry in plistEntries {
+        for (idx, entry) in plistEntries.enumerated() {
             if cancellation?.isCancelled == true { break }
+            onProgress?(idx + 1, totalPlists)
             guard let data = try? Data(contentsOf: entry.url),
                   let plist = try? PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? [String: Any],
                   let packageID = plist["PackageIdentifier"] as? String,

@@ -210,7 +210,7 @@ struct ContentView: View {
             return ""
         case .systemPosture:
             if let posture = model.systemPosture {
-                return "\(posture.hardwareModel) · macOS \(posture.macOSVersion) · \(posture.cpuArchitecture)"
+                return "\(posture.hardwareModel) · \(posture.macOSVersion) · \(posture.cpuArchitecture)"
             }
             return ""
         case .diff:
@@ -458,20 +458,6 @@ struct ContentView: View {
                 if case .recent(let url) = sidebarSelection.wrappedValue {
                     removeSingleRecent(url)
                 }
-            }
-
-            if model.report != nil || model.workspaceMode != .single {
-                Divider()
-                Button {
-                    model.clearReport()
-                } label: {
-                    Label(settings.t(.actionBackHome), systemImage: "house")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .help(settings.t(.actionBackHomeHelp))
-                .padding(10)
             }
         }
     }
